@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "paths": {
+      "@yuncbaowen/shared": ["../shared/src/index.ts"]
+    }
+  },
+  "include": ["src", "scripts"],
+  "exclude": ["node_modules", "dist"]
+}
