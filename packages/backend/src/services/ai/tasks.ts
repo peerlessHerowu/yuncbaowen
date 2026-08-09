@@ -11,40 +11,17 @@ import type {
 } from '@yuncbaowen/shared'
 
 /**
- * 从 AI 返回的文本中提取第一个完整 JSON 对象
- * 用括号深度匹配，不依赖 rfind，兼容 Claude 在 reason 里带单引号等边界情况
+ * 从 AI 返回的文本中提取 JSON
+ * 只做一件事：去掉 markdown 代码块后直接 JSON.parse
+ * 如果 Claude 返回了纯 JSON（无代码块），直接成功
+ * 如果有代码块，去掉后成功
  */
 function extractJSON(text: string): string {
-  // 去掉 markdown 代码块标记（支持多行）
-  const stripped = text
-    .replace(/^```(?:json)?\s*/im, '')
-    .replace(/\s*```\s*$/m, '')
+  // 去掉开头的 ```json 或 ``` 以及结尾的 ```
+  return text
+    .replace(/^\s*```(?:json)?\s*\n?/i, '')
+    .replace(/\n?\s*```\s*$/i, '')
     .trim()
-
-  const objIdx = stripped.indexOf('{')
-  const arrIdx = stripped.indexOf('[')
-  let start = -1
-  if (objIdx !== -1 && arrIdx !== -1) start = Math.min(objIdx, arrIdx)
-  else if (objIdx !== -1) start = objIdx
-  else if (arrIdx !== -1) start = arrIdx
-  if (start === -1) return stripped
-
-  const opener = stripped[start]
-  const closer = opener === '{' ? '}' : ']'
-  let depth = 0
-  let inString = false
-  let escape = false
-
-  for (let i = start; i < stripped.length; i++) {
-    const c = stripped[i]
-    if (escape)              { escape = false; continue }
-    if (c === '\\' && inString) { escape = true;  continue }
-    if (c === '"')           { inString = !inString; continue }
-    if (inString)            continue
-    if (c === opener)        depth++
-    else if (c === closer)   { depth--; if (depth === 0) return stripped.slice(start, i + 1) }
-  }
-  return stripped.slice(start)
 }
 
 // ─── 爆款标题 ────────────────────────────────────────────────
@@ -54,8 +31,7 @@ export async function generateTitles(userId: number, req: TitleRequest): Promise
 请根据主题「${req.topic}」生成 ${count} 个不同套路的爆款标题。
 套路要覆盖：悬念式、数字式、反差式、痛点式、福利式、共鸣式。
 ${req.style ? `参考写作风格：${req.style}` : ''}
-返回 JSON 格式，字段：titles: [{text: string, type: string}]
-只返回 JSON，不要任何解释。`
+以纯 JSON 返回（不要 markdown 代码块，不要解释），格式为包含 titles 数组的对象，每项有 text（标题文字）和 type（套路名称）两个字段。`
 
   const { content, provider } = await chatWithFallback(userId, [
     { role: 'user', content: prompt }
@@ -91,13 +67,8 @@ ${urlList}
 4. 情感基调（共鸣/激励/悬念/干货）
 5. 金句特征（有无金句/位置/形式）
 
-返回 JSON：
-{
-  "name": "风格名称（简短）",
-  "description": "一句话描述",
-  "prompt_content": "详细的写作提示词（200-400字，可直接用于指导AI写作）"
-}
-只返回 JSON，不要解释。`
+以纯 JSON 返回（不要 markdown 代码块，不要解释，直接输出 JSON），包含三个字段：
+name（风格名称，简短）、description（一句话描述）、prompt_content（详细写作提示词，200-400字）`
 
   const { content } = await chatWithFallback(userId, [{ role: 'user', content: prompt }])
   const cleaned = extractJSON(content)
@@ -180,8 +151,7 @@ ${selected.map(p => `- ${p}（${platformGuides[p]}）`).join('\n')}
 原内容：
 ${req.content}
 
-返回 JSON 格式：{"weixin":"...","xiaohongshu":"..."}
-只返回 JSON。`
+以纯 JSON 返回（不要 markdown 代码块，不要解释），key 为平台名称，value 为对应文案。`
 
   const { content, provider } = await chatWithFallback(userId, [{ role: 'user', content: prompt }], { max_tokens: 8000 })
   const cleaned = extractJSON(content)
@@ -234,21 +204,15 @@ ${current}`
 
 // ─── 内容检测 ────────────────────────────────────────────────
 export async function detectContent(userId: number, req: DetectRequest): Promise<DetectResult> {
-  const prompt = `你是专业内容检测系统。请对以下文章进行四维检测：
-1. AI痕迹（0-100分）：检测AI写作痕迹，100分=完全像真人
-2. 违禁词（0-100分）：检测违规内容，100分=完全合规
-3. 原创度（0-100分）：内容原创程度
-4. 可读性（0-100分）：阅读体验
+  const prompt = `你是专业内容检测系统。请对以下文章进行四维检测并以纯 JSON 格式返回结果（不要 markdown 代码块，不要任何解释，直接输出 JSON）：
 
-对每个维度：找出具体扣分句子（text字段），说明原因（reason字段）。
+检测维度：
+- ai_taste：AI痕迹（0-100分，100分=完全像真人）
+- forbidden_words：违禁词（0-100分，100分=完全合规）
+- originality：原创度（0-100分）
+- readability：可读性（0-100分）
 
-返回严格 JSON：
-{
-  "ai_taste":       {"score":85,"issues":[{"text":"...","start":0,"end":10,"reason":"..."}]},
-  "forbidden_words":{"score":100,"issues":[]},
-  "originality":    {"score":78,"issues":[]},
-  "readability":    {"score":82,"issues":[]}
-}
+每个维度包含 score（数字）和 issues（数组），issues 中每项包含 text（扣分句子）、start（起始位置）、end（结束位置）、reason（扣分原因）。
 
 文章内容：
 ${req.content.slice(0, 3000)}`

@@ -33,7 +33,11 @@ export default function DeAIPage() {
       } else {
         toast(`⚠️ 最终评分 ${res.data.data.final_score} 分，可手动继续优化`, { icon: '⚠️' })
       }
-    } catch {} finally { setLoading(false) }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+        || (err instanceof Error ? err.message : '处理失败，请重试')
+      toast.error(msg)
+    } finally { setLoading(false) }
   }
 
   async function copy(text: string) {
