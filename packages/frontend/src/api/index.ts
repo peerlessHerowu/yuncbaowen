@@ -3,7 +3,7 @@ import type {
   RegisterDto, LoginDto, AuthResponse, ActivateDto,
   TitleRequest, StyleAnalyzeRequest,
   PlatformRequest, DeAIRequest, DetectRequest,
-  TrendingPlatform, TrendingCategory,
+  TrendingCategory,
 } from '@yuncbaowen/shared'
 
 // ── Auth ────────────────────────────────────────────────────────
@@ -34,7 +34,7 @@ export const aiApi = {
 
 // ── Trending ────────────────────────────────────────────────────
 export const trendingApi = {
-  list: (platform: TrendingPlatform | 'all' = 'all', category: TrendingCategory = 'all') =>
+  list: (platform: string = 'all', category: TrendingCategory = 'all') =>
     api.get('/trending', { params: { platform, category } }),
 }
 

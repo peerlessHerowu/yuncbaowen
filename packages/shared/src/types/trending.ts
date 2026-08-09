@@ -1,4 +1,4 @@
-export type TrendingPlatform = 'weibo' | 'zhihu' | 'douyin' | 'toutiao'
+export type TrendingPlatform = 'weibo' | 'zhihu' | 'douyin' | 'toutiao' | 'bilibili'
 export type TrendingCategory = 'all' | 'tech' | 'finance' | 'entertainment' | 'health' | 'emotion' | 'society'
 
 export interface TrendingItem {

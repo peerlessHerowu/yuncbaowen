@@ -2,16 +2,17 @@ import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { TrendingUp, RefreshCw, Flame, ArrowRight, Loader2 } from 'lucide-react'
 import { trendingApi } from '../../api'
-import type { TrendingItem, TrendingPlatform, TrendingCategory } from '@yuncbaowen/shared'
+import type { TrendingItem, TrendingCategory } from '@yuncbaowen/shared'
 import toast from 'react-hot-toast'
 import { cn } from '../../utils/cn'
 
-const PLATFORMS: Array<{ id: TrendingPlatform | 'all'; label: string; icon: string }> = [
-  { id: 'all',     label: '全部',   icon: '🌐' },
-  { id: 'weibo',   label: '微博',   icon: '🔴' },
-  { id: 'zhihu',   label: '知乎',   icon: '🔵' },
-  { id: 'douyin',  label: '抖音',   icon: '⚫' },
-  { id: 'toutiao', label: '头条',   icon: '🔶' },
+const PLATFORMS: Array<{ id: string; label: string; icon: string }> = [
+  { id: 'all',      label: '全部',  icon: '🌐' },
+  { id: 'toutiao',  label: '头条',  icon: '🔶' },
+  { id: 'bilibili', label: 'B站',   icon: '📺' },
+  { id: 'weibo',    label: '微博',  icon: '🔴' },
+  { id: 'zhihu',    label: '知乎',  icon: '🔵' },
+  { id: 'douyin',   label: '抖音',  icon: '⚫' },
 ]
 
 const CATEGORIES: Array<{ id: TrendingCategory; label: string }> = [
@@ -26,7 +27,7 @@ const CATEGORIES: Array<{ id: TrendingCategory; label: string }> = [
 
 export default function TrendingPage() {
   const navigate = useNavigate()
-  const [platform, setPlatform] = useState<TrendingPlatform | 'all'>('all')
+  const [platform, setPlatform] = useState<string>('all')
   const [category, setCategory] = useState<TrendingCategory>('all')
   const [items, setItems]       = useState<TrendingItem[]>([])
   const [loading, setLoading]   = useState(true)
