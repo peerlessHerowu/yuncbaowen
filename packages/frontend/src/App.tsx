@@ -1,5 +1,7 @@
+import { useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './store/auth'
+import { authApi } from './api'
 import AppLayout from './layouts/AppLayout'
 import LoginPage from './pages/auth/LoginPage'
 import RegisterPage from './pages/auth/RegisterPage'
@@ -28,6 +30,16 @@ function RedirectIfAuth({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  const { isLoggedIn, updateUser } = useAuthStore()
+
+  // 应用启动时，如果已登录，从服务器刷新最新用户状态（解决 is_activated 缓存问题）
+  useEffect(() => {
+    if (!isLoggedIn) return
+    authApi.getMe()
+      .then(res => updateUser(res.data.data.user))
+      .catch(() => { /* token 过期等情况静默处理，由 axios 拦截器统一 logout */ })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <Routes>
       {/* 公开路由 */}

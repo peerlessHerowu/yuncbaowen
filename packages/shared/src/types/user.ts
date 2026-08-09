@@ -23,7 +23,7 @@ export interface ModelConfig {
   }
 }
 
-export const PROVIDERS = ['deepseek', 'openai', 'claude', 'qwen', 'kimi', 'zhipu', 'gemini'] as const
+export const PROVIDERS = ['deepseek', 'openai', 'claude', 'qwen', 'kimi', 'zhipu', 'gemini', 'kiro'] as const
 export type Provider = typeof PROVIDERS[number]
 
 export interface ProviderInfo {
