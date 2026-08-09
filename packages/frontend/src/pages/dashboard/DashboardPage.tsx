@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   TrendingUp, Type, Palette, PenTool, RefreshCw,
-  Globe, Wand2, ScanText, BookOpen, FileText,
-  History, Zap, ChevronRight, Loader2,
+  Globe, Wand2, ScanText,
+  Zap, ChevronRight, Loader2,
 } from 'lucide-react'
 import { useAuthStore } from '../../store/auth'
 import { creationApi, authApi } from '../../api'

@@ -1,8 +1,8 @@
 import { api } from './client'
 import type {
   RegisterDto, LoginDto, AuthResponse, ActivateDto,
-  TitleRequest, StyleAnalyzeRequest, GenerateRequest,
-  RewriteRequest, PlatformRequest, DeAIRequest, DetectRequest,
+  TitleRequest, StyleAnalyzeRequest,
+  PlatformRequest, DeAIRequest, DetectRequest,
   TrendingPlatform, TrendingCategory,
 } from '@yuncbaowen/shared'
 

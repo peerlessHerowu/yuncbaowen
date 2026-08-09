@@ -19,7 +19,7 @@ const COLOR_MAP: Record<string, string> = {
   green:  'bg-brand-500/20 text-brand-300 border-brand-500/30',
 }
 
-function ScoreBar({ score, color }: { score: number; color: string }) {
+function ScoreBar({ score }: { score: number }) {
   const barColor = score >= 80 ? 'bg-brand-500' : score >= 60 ? 'bg-amber-500' : 'bg-red-500'
   return (
     <div className="flex items-center gap-3">
@@ -109,7 +109,7 @@ export default function DetectPage() {
                             className={cn('badge border text-xs shrink-0 w-20 justify-center', COLOR_MAP[d.color])}>
                             {d.icon} {d.label}
                           </button>
-                          <ScoreBar score={result.dimensions[d.key].score} color={d.color} />
+                          <ScoreBar score={result.dimensions[d.key].score} />
                         </div>
                       ))}
                     </div>

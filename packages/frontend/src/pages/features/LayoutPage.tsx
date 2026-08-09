@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FileText, Copy, Download, Palette } from 'lucide-react'
+import { FileText, Copy, Palette } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { cn } from '../../utils/cn'
 

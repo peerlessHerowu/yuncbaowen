@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { Palette, Plus, Loader2, Trash2, ChevronRight, Link2 } from 'lucide-react'
 import { aiApi, styleApi } from '../../api'
 import toast from 'react-hot-toast'
-import { cn } from '../../utils/cn'
 
 interface StylePrompt { id?: number; name: string; description: string; source_urls: string[]; prompt_content: string }
 
