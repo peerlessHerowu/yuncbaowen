@@ -89,7 +89,7 @@ export async function resolveKeys(userId: number): Promise<ResolvedKey[]> {
     ? JSON.parse(row.model_config)
     : row.model_config
 
-  const order: Provider[] = config.fallback_order || Object.keys(PROVIDER_CONFIGS) as Provider[]
+  const order: Provider[] = (config.fallback_order?.length ? config.fallback_order : Object.keys(PROVIDER_CONFIGS)) as Provider[]
   const result: ResolvedKey[] = []
 
   for (const id of order) {

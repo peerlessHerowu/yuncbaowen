@@ -10,6 +10,43 @@ import type {
   DetectRequest, DetectResult,
 } from '@yuncbaowen/shared'
 
+/**
+ * 从 AI 返回的文本中提取第一个完整 JSON 对象
+ * 用括号深度匹配，不依赖 rfind，兼容 Claude 在 reason 里带单引号等边界情况
+ */
+function extractJSON(text: string): string {
+  // 去掉 markdown 代码块标记（支持多行）
+  const stripped = text
+    .replace(/^```(?:json)?\s*/im, '')
+    .replace(/\s*```\s*$/m, '')
+    .trim()
+
+  const objIdx = stripped.indexOf('{')
+  const arrIdx = stripped.indexOf('[')
+  let start = -1
+  if (objIdx !== -1 && arrIdx !== -1) start = Math.min(objIdx, arrIdx)
+  else if (objIdx !== -1) start = objIdx
+  else if (arrIdx !== -1) start = arrIdx
+  if (start === -1) return stripped
+
+  const opener = stripped[start]
+  const closer = opener === '{' ? '}' : ']'
+  let depth = 0
+  let inString = false
+  let escape = false
+
+  for (let i = start; i < stripped.length; i++) {
+    const c = stripped[i]
+    if (escape)              { escape = false; continue }
+    if (c === '\\' && inString) { escape = true;  continue }
+    if (c === '"')           { inString = !inString; continue }
+    if (inString)            continue
+    if (c === opener)        depth++
+    else if (c === closer)   { depth--; if (depth === 0) return stripped.slice(start, i + 1) }
+  }
+  return stripped.slice(start)
+}
+
 // ─── 爆款标题 ────────────────────────────────────────────────
 export async function generateTitles(userId: number, req: TitleRequest): Promise<TitleResult> {
   const count = req.count ?? 12
@@ -25,7 +62,7 @@ ${req.style ? `参考写作风格：${req.style}` : ''}
   ], { temperature: 0.9 })
 
   try {
-    const cleaned = content.replace(/```json\n?|\n?```/g, '').trim()
+    const cleaned = extractJSON(content)
     const parsed = JSON.parse(cleaned) as { titles: Array<{ text: string; type: string }> }
     return { titles: parsed.titles, provider }
   } catch {
@@ -63,7 +100,7 @@ ${urlList}
 只返回 JSON，不要解释。`
 
   const { content } = await chatWithFallback(userId, [{ role: 'user', content: prompt }])
-  const cleaned = content.replace(/```json\n?|\n?```/g, '').trim()
+  const cleaned = extractJSON(content)
   const parsed = JSON.parse(cleaned) as { name: string; description: string; prompt_content: string }
   return { ...parsed, source_urls: req.urls }
 }
@@ -147,7 +184,7 @@ ${req.content}
 只返回 JSON。`
 
   const { content, provider } = await chatWithFallback(userId, [{ role: 'user', content: prompt }], { max_tokens: 8000 })
-  const cleaned = content.replace(/```json\n?|\n?```/g, '').trim()
+  const cleaned = extractJSON(content)
   return { results: JSON.parse(cleaned), provider }
 }
 
@@ -217,7 +254,7 @@ export async function detectContent(userId: number, req: DetectRequest): Promise
 ${req.content.slice(0, 3000)}`
 
   const { content, provider } = await chatWithFallback(userId, [{ role: 'user', content: prompt }])
-  const cleaned = content.replace(/```json\n?|\n?```/g, '').trim()
+  const cleaned = extractJSON(content)
   const dims = JSON.parse(cleaned) as DetectResult['dimensions']
   const scores = [dims.ai_taste.score, dims.forbidden_words.score, dims.originality.score, dims.readability.score]
   const overall = Math.round(scores.reduce((a, b) => a + b, 0) / 4)
