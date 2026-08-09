@@ -74,7 +74,7 @@ async function fetchBilibili(): Promise<TrendingItem[]> {
 }
 
 /**
- * 微博热搜 — 优先尝试真实接口，失败则用头条补全
+ * 微博热搜 — 直接请求真实接口，失败返回空（不用其他平台数据冒充）
  */
 async function fetchWeibo(): Promise<TrendingItem[]> {
   try {
@@ -107,8 +107,8 @@ async function fetchWeibo(): Promise<TrendingItem[]> {
       fetched_at: new Date().toISOString(),
     }))
   } catch (err) {
-    logger.warn('Weibo fetch failed, using Bilibili as substitute:', err)
-    return fetchBilibili()
+    logger.warn('Weibo fetch failed (API blocked, returning empty):', (err as Error).message)
+    return []  // 失败返回空，不用其他平台数据冒充
   }
 }
 
@@ -155,11 +155,9 @@ async function fetchZhihu(): Promise<TrendingItem[]> {
 }
 
 /**
- * 抖音热点 — 尝试公开接口，失败则返回空（由头条补充）
+ * 抖音热点 — 真实接口可用（实测48条），失败返回空
  */
 async function fetchDouyin(): Promise<TrendingItem[]> {
-  // 抖音没有稳定可用的公开 API，目前以头条补充
-  // 后续可集成 TikTok Research API 或付费爬虫服务
   try {
     const resp = await fetchWithTimeout(
       'https://www.douyin.com/aweme/v1/web/hot/search/list/?device_platform=webapp&source=6&keyword_num=15',
@@ -167,7 +165,6 @@ async function fetchDouyin(): Promise<TrendingItem[]> {
         headers: {
           'User-Agent': UA,
           'Referer': 'https://www.douyin.com/',
-          'Cookie': '',
         }
       }
     )
@@ -190,8 +187,8 @@ async function fetchDouyin(): Promise<TrendingItem[]> {
       fetched_at: new Date().toISOString(),
     })).filter(i => i.title)
   } catch (err) {
-    logger.warn('Douyin fetch failed:', err)
-    return []
+    logger.warn('Douyin fetch failed (returning empty):', (err as Error).message)
+    return []  // 失败返回空，不用其他平台数据冒充
   }
 }
 
@@ -205,7 +202,7 @@ export const FETCHERS: Record<string, () => Promise<TrendingItem[]>> = {
 
 /**
  * 聚合所有平台或单个平台的热榜
- * 至少保证头条和B站有真实数据；微博/知乎失败时自动用替代源补充
+ * 规则：每个平台只显示该平台自己的真实数据，失败返回空，绝不用其他平台数据冒充
  */
 export async function fetchTrending(platform: TrendingPlatform | 'bilibili' | 'all' = 'all'): Promise<TrendingItem[]> {
   if (platform === 'all') {
