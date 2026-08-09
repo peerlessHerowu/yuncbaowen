@@ -1,0 +1,109 @@
+/* ============================================================
+   Design Tokens — CSS 自定义属性 + Reset + 工具类
+   ============================================================ */
+:root {
+  --bg-0: #08080e; --bg-1: #0f0f1a; --bg-2: #141428;
+  --bg-card: rgba(255,255,255,.04); --bg-card-h: rgba(255,255,255,.08);
+  --p0: #7c3aed; --p1: #2563eb;
+  --grad: linear-gradient(135deg,#7c3aed 0%,#2563eb 100%);
+  --orange: #f97316; --green: #10b981; --pink: #ec4899; --cyan: #06b6d4;
+  --t0: #f1f5f9; --t1: #94a3b8; --t2: #475569;
+  --b0: rgba(255,255,255,.07); --b1: rgba(124,58,237,.5);
+  --gp: 0 0 40px rgba(124,58,237,.22);
+  --gb: 0 0 40px rgba(37,99,235,.22);
+  --go: 0 0 32px rgba(249,115,22,.32);
+  --ff: 'Inter','Noto Sans SC',-apple-system,sans-serif;
+  --r-sm:8px; --r-md:12px; --r-lg:16px; --r-xl:24px; --r-f:9999px;
+  --nav-h:68px; --max-w:1280px;
+  --spring: cubic-bezier(.34,1.56,.64,1);
+  --smooth: cubic-bezier(.4,0,.2,1);
+}
+
+[data-theme="light"] {
+  --bg-0:#f8fafc; --bg-1:#f1f5f9; --bg-2:#e2e8f0;
+  --bg-card:rgba(0,0,0,.03); --bg-card-h:rgba(0,0,0,.06);
+  --t0:#0f172a; --t1:#475569; --t2:#94a3b8;
+  --b0:rgba(0,0,0,.08);
+}
+
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0 }
+html { scroll-behavior:smooth; -webkit-text-size-adjust:100% }
+body {
+  font-family:var(--ff); background:var(--bg-0); color:var(--t0);
+  line-height:1.6; overflow-x:hidden;
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+}
+a { color:inherit; text-decoration:none }
+button { cursor:pointer; font-family:inherit; border:none; background:none }
+ul,ol { list-style:none }
+
+/* —— 工具类 —— */
+.container { width:100%; max-width:var(--max-w); margin:0 auto; padding:0 clamp(1rem,5vw,4rem) }
+.section { padding:clamp(3rem,6vw,4.5rem) 0 }
+
+.grad-text {
+  background:var(--grad); -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent; background-clip:text;
+}
+
+.sec-label {
+  display:inline-flex; align-items:center; gap:.5rem;
+  font-size:.75rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--p0); background:rgba(124,58,237,.1);
+  border:1px solid rgba(124,58,237,.25); padding:.3rem .75rem;
+  border-radius:var(--r-f); margin-bottom:1.5rem;
+}
+.sec-title {
+  font-size:clamp(1.875rem,4vw,3rem); font-weight:800;
+  line-height:1.15; letter-spacing:-.02em; margin-bottom:1rem;
+}
+.sec-desc { font-size:1.125rem; color:var(--t1); line-height:1.75; max-width:560px }
+
+/* —— 玻璃卡片 —— */
+.card {
+  background:var(--bg-card); border:1px solid var(--b0);
+  border-radius:var(--r-lg); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+  transition:transform 300ms var(--spring), border-color 300ms, box-shadow 300ms, background 300ms;
+}
+.card:hover { transform:translateY(-5px); border-color:var(--b1); box-shadow:var(--gp); background:var(--bg-card-h) }
+
+/* —— 按钮 —— */
+.btn {
+  display:inline-flex; align-items:center; gap:.5rem;
+  padding:14px 32px; font-size:1rem; font-weight:600;
+  border-radius:var(--r-md); white-space:nowrap;
+  transition:transform 200ms var(--spring), box-shadow 200ms;
+}
+.btn-cta { background:linear-gradient(135deg,#f97316,#ea580c); color:#fff; box-shadow:var(--go) }
+.btn-cta:hover { transform:scale(1.04); box-shadow:0 0 40px rgba(249,115,22,.55) }
+.btn-cta:active { transform:scale(.98) }
+.btn-ghost {
+  background:rgba(255,255,255,.06); color:var(--t0);
+  border:1px solid rgba(255,255,255,.14); backdrop-filter:blur(12px);
+}
+.btn-ghost:hover { border-color:rgba(255,255,255,.32); background:rgba(255,255,255,.1); transform:scale(1.02) }
+
+/* —— 滚动揭示动画 —— */
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 600ms var(--smooth), transform 600ms var(--smooth);
+}
+.reveal.in { opacity: 1; transform: translateY(0); }
+.d1{transition-delay:80ms}  .d2{transition-delay:160ms}
+.d3{transition-delay:240ms} .d4{transition-delay:320ms}
+
+/* 打印 / 截图 / 不支持 JS 时直接显示 */
+@media print {
+  .reveal { opacity:1 !important; transform:none !important; }
+}
+/* 禁用动画偏好 */
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity:1 !important; transform:none !important; transition:none !important; }
+}
+
+@media(hover:none) { .card:hover,.btn-cta:hover { transform:none; box-shadow:none } }
+@media(prefers-reduced-motion:reduce) {
+  *,*::before,*::after { animation-duration:.01ms!important; transition-duration:.01ms!important }
+  .reveal { opacity:1; transform:none }
+}

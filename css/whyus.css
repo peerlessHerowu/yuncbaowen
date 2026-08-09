@@ -1,0 +1,38 @@
+/* ============================================================
+   Why Us Section
+   ============================================================ */
+#whyus { background:var(--bg-1); position:relative; overflow:hidden }
+#whyus::before {
+  content:''; position:absolute; inset:0; pointer-events:none;
+  background:
+    radial-gradient(ellipse 50% 60% at 8%  50%, rgba(124,58,237,.07) 0%,transparent 60%),
+    radial-gradient(ellipse 50% 60% at 92% 50%, rgba(37,99,235,.07)  0%,transparent 60%);
+}
+.wu-header { text-align:center; margin-bottom:3rem }
+
+.wu-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:1.5rem }
+
+.wu-card { padding:2rem 1.75rem; display:flex; flex-direction:column; gap:1.25rem }
+
+.wu-head { display:flex; align-items:flex-start; gap:1rem }
+.wu-icon {
+  width:54px; height:54px; border-radius:var(--r-md);
+  display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0;
+}
+.wu-icon.pu { background:rgba(124,58,237,.14); border:1px solid rgba(124,58,237,.25) }
+.wu-icon.bl { background:rgba(37, 99,235,.14); border:1px solid rgba(37, 99,235,.25) }
+.wu-icon.or { background:rgba(249,115, 22,.14); border:1px solid rgba(249,115, 22,.25) }
+.wu-icon.gr { background:rgba( 16,185,129,.14); border:1px solid rgba( 16,185,129,.25) }
+
+.wu-card-title { font-size:1.125rem; font-weight:800; color:var(--t0); margin-bottom:.2rem; line-height:1.3 }
+.wu-card-sub   { font-size:.8rem; color:var(--t1); line-height:1.6 }
+
+/* 对比列表 */
+.wu-compare { border-top:1px solid var(--b0); padding-top:1.25rem; display:flex; flex-direction:column; gap:.75rem }
+.cmp-row { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; font-size:.8rem; line-height:1.5 }
+.cmp-them { color:var(--t2); display:flex; gap:.4rem; align-items:flex-start }
+.cmp-us   { color:var(--t0); display:flex; gap:.4rem; align-items:flex-start }
+.icon-bad  { color:#ef4444; flex-shrink:0; margin-top:1px }
+.icon-good { color:var(--green); flex-shrink:0; margin-top:1px }
+
+@media(max-width:768px) { .wu-grid { grid-template-columns:1fr } }

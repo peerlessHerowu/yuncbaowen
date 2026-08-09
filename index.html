@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="云创一键爆文 · 公众号AI写作助手。从热点选题到成稿发布，一条流水线，去AI味，爆款率高。" />
+  <title>云创一键爆文 · 公众号AI写作助手</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/tokens.css" />
+  <link rel="stylesheet" href="css/navbar.css" />
+  <link rel="stylesheet" href="css/hero.css" />
+  <link rel="stylesheet" href="css/workflow.css" />
+  <link rel="stylesheet" href="css/features.css" />
+  <link rel="stylesheet" href="css/whyus.css" />
+  <link rel="stylesheet" href="css/footer.css" />
+  <!-- 防闪：在 CSS 渲染前同步决定主题 -->
+  <script>
+    (function(){
+      var t = localStorage.getItem('yc-theme');
+      // 无存储记录则默认 dark
+      document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
+    })();
+  </script>
+</head>
+<body>
+
+<!-- ========== NAVBAR ========== -->
+<nav id="navbar" role="navigation" aria-label="主导航">
+  <div class="container nav-wrap">
+    <a href="#" class="nav-logo" aria-label="云创爆文首页">
+      <div class="nav-logo-icon" aria-hidden="true">⚡</div>
+      <span>云创爆文</span>
+    </a>
+    <div class="nav-links">
+      <a href="#workflow">工作流</a>
+      <a href="#features">功能</a>
+      <a href="#whyus">优势</a>
+    </div>
+    <div class="nav-actions">
+      <button class="nav-theme" id="themeBtn" aria-label="切换主题">🌙</button>
+      <a href="#" class="nav-login">登录</a>
+      <a href="#cta" class="nav-cta">免费开始</a>
+      <button class="nav-burger" id="nav-burger" aria-label="菜单" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </div>
+</nav>
+<div class="nav-drawer" id="nav-drawer" role="dialog" aria-label="移动端导航">
+  <a href="#workflow">🔄 工作流</a>
+  <a href="#features">✨ 功能</a>
+  <a href="#whyus">🏆 优势</a>
+  <a href="#cta" class="btn btn-cta">🚀 免费开始</a>
+</div>
+
+<!-- ========== HERO ========== -->
+<main>
+<section id="hero">
+  <canvas id="hero-canvas" aria-hidden="true"></canvas>
+  <div class="orb orb-1" aria-hidden="true"></div>
+  <div class="orb orb-2" aria-hidden="true"></div>
+  <div class="orb orb-3" aria-hidden="true"></div>
+
+  <div class="container">
+    <div class="hero-inner">
+
+      <div class="hero-badge">
+        <span class="badge-dot"></span>
+        公众号 / 头条 AI 写作助手 · 全新上线
+      </div>
+
+      <h1 class="hero-title">
+        从热点到爆文<br>
+        <span class="hero-title-row2">
+          <span class="hero-title-hl" id="heroTyped">一条流水线</span><span class="cursor" aria-hidden="true"></span>
+        </span>
+      </h1>
+
+      <p class="hero-sub">
+        粘贴标杆文章链接，AI 自动拆解写作风格，生成专属提示词。<br>
+        一键产出去 AI 味的爆款正文，全程贯通热点选题、爆款标题、内容检测与公众号原生排版。
+      </p>
+
+      <div class="hero-btns">
+        <a href="#cta" class="btn btn-cta">🚀 免费开始创作</a>
+        <a href="#workflow" class="btn btn-ghost">📖 查看工作流</a>
+      </div>
+
+      <div class="hero-stats" role="list">
+        <div class="stat card" role="listitem">
+          <span class="stat-n" data-count="13" data-suffix="+">13+</span>
+          <span class="stat-l">创作功能模块</span>
+        </div>
+        <div class="stat-sep" aria-hidden="true"></div>
+        <div class="stat card" role="listitem">
+          <span class="stat-n" data-count="8" data-suffix="">8</span>
+          <span class="stat-l">AI 服务商可选</span>
+        </div>
+        <div class="stat-sep" aria-hidden="true"></div>
+        <div class="stat card" role="listitem">
+          <span class="stat-n orange" data-count="7" data-suffix="">7</span>
+          <span class="stat-l">推文平台适配</span>
+        </div>
+        <div class="stat-sep" aria-hidden="true"></div>
+        <div class="stat card" role="listitem">
+          <span class="stat-n orange" data-count="4" data-suffix="">4</span>
+          <span class="stat-l">维度内容检测</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="scroll-hint" aria-hidden="true">
+    <div class="scroll-mouse"><div class="scroll-wheel"></div></div>
+    <span>向下滚动</span>
+  </div>
+</section>
+
+<!-- ========== WORKFLOW ========== -->
+<section id="workflow" class="section">
+  <div class="container">
+    <div class="wf-header reveal">
+      <div class="sec-label">⚡ Workflow</div>
+      <h2 class="sec-title">五步，从热点到<span class="grad-text">爆文</span></h2>
+      <p class="sec-desc" style="margin:0 auto">每步结果一键送到下一步，全流程打通，不像别家割裂成孤岛。</p>
+    </div>
+    <div class="wf-line">
+      <div class="wf-step reveal d1">
+        <div class="wf-node">🔥<span class="wf-num">1</span></div>
+        <div class="wf-title">找热点</div>
+        <div class="wf-desc">扫全网热榜，按赛道归类，破万自动置顶</div>
+      </div>
+      <div class="wf-step reveal d2">
+        <div class="wf-node">💡<span class="wf-num">2</span></div>
+        <div class="wf-title">起标题</div>
+        <div class="wf-desc">10+ 套路批量生成，悬念/数字/反差/痛点一次给足</div>
+      </div>
+      <div class="wf-step reveal d3">
+        <div class="wf-node">✍️<span class="wf-num">3</span></div>
+        <div class="wf-title">写全文</div>
+        <div class="wf-desc">风格复刻 + 知识库引用，定向生成有理有据</div>
+      </div>
+      <div class="wf-step reveal d4">
+        <div class="wf-node">🧬<span class="wf-num">4</span></div>
+        <div class="wf-title">去 AI 味</div>
+        <div class="wf-desc">检测闭环自动改写，最多 3 轮，真人感拉满</div>
+      </div>
+      <div class="wf-step reveal" style="transition-delay:400ms">
+        <div class="wf-node">📱<span class="wf-num">5</span></div>
+        <div class="wf-title">排版发</div>
+        <div class="wf-desc">Markdown 秒变精美图文，一键生成封面卡片</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== FEATURES ========== -->
+<section id="features" class="section">
+  <div class="container">
+    <div class="ft-header reveal">
+      <div class="sec-label">✨ Features</div>
+      <h2 class="sec-title">一套工具，覆盖<span class="grad-text">创作全流程</span></h2>
+      <p class="sec-desc" style="margin:0 auto">比对标产品更全、更透明、更稳定的爆款创作系统。</p>
+    </div>
+
+    <!-- Tab 栏 -->
+    <div class="ft-tabs" role="tablist">
+      <button class="ft-tab" data-tab="sourcing" role="tab">🔥 选题·找爆点</button>
+      <button class="ft-tab" data-tab="writing"  role="tab">✍️ 创作·出爆文</button>
+      <button class="ft-tab" data-tab="quality"  role="tab">🧬 质检·去AI味</button>
+      <button class="ft-tab" data-tab="publish"  role="tab">📱 成稿·直接发</button>
+    </div>
+
+    <!-- SOURCING 面板 -->
+    <div class="ft-panel" data-panel="sourcing" role="tabpanel">
+      <div class="ft-list">
+        <div class="ft-item active">
+          <div class="ft-item-icon" style="font-size:28px">🔥</div>
+          <div>
+            <div class="ft-item-title">热点追踪</div>
+            <div class="ft-item-desc">聚合微博/知乎/抖音/头条全网热榜，按内容赛道自动归类，破万爆点自动置顶，每条一键「起标题 / 写全文」。</div>
+          </div>
+        </div>
+        <div class="ft-item">
+          <div class="ft-item-icon" style="font-size:28px">💡</div>
+          <div>
+            <div class="ft-item-title">爆款标题</div>
+            <div class="ft-item-desc">输入主题批量生成 10-15 个不同套路标题（悬念/数字/反差/痛点…），一次给足，直接挑。</div>
+          </div>
+        </div>
+      </div>
+      <div class="ft-preview reveal">
+        <div class="mock-win">
+          <div class="mock-bar">
+            <div class="mock-dot mock-dot-r"></div><div class="mock-dot mock-dot-y"></div><div class="mock-dot mock-dot-g"></div>
+            <span class="mock-bar-title">热点追踪 — 全网热榜</span>
+          </div>
+          <div class="mock-body">
+            <div class="mock-row">
+              <span class="mock-tag o">🔥 微博</span>
+              <span class="mock-tag">知乎</span>
+              <span class="mock-tag">抖音</span>
+              <span class="mock-tag">头条</span>
+            </div>
+            <div class="mock-block">
+              <div class="mock-row" style="justify-content:space-between">
+                <span style="font-size:.72rem;color:var(--t1)">🔥 #AI写作工具大爆发#</span>
+                <span class="mock-tag o" style="font-size:.6rem">破万</span>
+              </div>
+              <div class="mock-row" style="justify-content:flex-end;gap:.5rem">
+                <div class="mock-btn" style="height:28px;padding:0 10px;font-size:.65rem">💡 起标题</div>
+                <div class="mock-btn" style="height:28px;padding:0 10px;font-size:.65rem">✍️ 写全文</div>
+              </div>
+            </div>
+            <div class="mock-block">
+              <div class="mock-row" style="justify-content:space-between">
+                <span style="font-size:.72rem;color:var(--t1)">💼 #副业变现新方式#</span>
+                <span class="mock-tag" style="font-size:.6rem">8.2k</span>
+              </div>
+            </div>
+            <div class="mock-block">
+              <div class="mock-row" style="justify-content:space-between">
+                <span style="font-size:.72rem;color:var(--t1)">💰 #普通人如何月入过万#</span>
+                <span class="mock-tag" style="font-size:.6rem">6.1k</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- WRITING 面板 -->
+    <div class="ft-panel" data-panel="writing" role="tabpanel">
+      <div class="ft-list">
+        <div class="ft-item active">
+          <div class="ft-item-icon" style="font-size:28px">🎨</div>
+          <div>
+            <div class="ft-item-title">风格复刻</div>
+            <div class="ft-item-desc">粘贴 1-5 篇文章链接，AI 用 Claude Opus 深度拆解写作指纹，生成可永久复用的专属风格提示词。</div>
+          </div>
+        </div>
+        <div class="ft-item">
+          <div class="ft-item-icon" style="font-size:28px">✍️</div>
+          <div>
+            <div class="ft-item-title">定向生成 · 引用知识库</div>
+            <div class="ft-item-desc">选定风格 + 主题一键成文；勾选「引用知识库」，让 AI 基于你上传的资料写作，有理有据不跑题。</div>
+          </div>
+        </div>
+        <div class="ft-item">
+          <div class="ft-item-icon" style="font-size:28px">🔄</div>
+          <div>
+            <div class="ft-item-title">二次仿写</div>
+            <div class="ft-item-desc">把任意原文洗成语义等价、文字面貌焕然一新的新稿，降重更顺，可读性更高。</div>
+          </div>
+        </div>
+        <div class="ft-item">
+          <div class="ft-item-icon" style="font-size:28px">📣</div>
+          <div>
+            <div class="ft-item-title">多平台推文</div>
+            <div class="ft-item-desc">一份素材，一键改写成公众号/小红书/微博/知乎/抖音口播/朋友圈/视频号原生文案，各自适配调性。</div>
+          </div>
+        </div>
+      </div>
+      <div class="ft-preview reveal">
+        <div class="mock-win">
+          <div class="mock-bar">
+            <div class="mock-dot mock-dot-r"></div><div class="mock-dot mock-dot-y"></div><div class="mock-dot mock-dot-g"></div>
+            <span class="mock-bar-title">风格复刻 — 写作指纹分析</span>
+          </div>
+          <div class="mock-body">
+            <div class="mock-row">
+              <div class="mock-input">https://mp.weixin.qq.com/s/xxx</div>
+              <div class="mock-btn">+ 添加</div>
+            </div>
+            <div class="mock-block">
+              <div style="font-size:.7rem;color:var(--t1);margin-bottom:.4rem">🎨 已分析 2 篇文章</div>
+              <div class="mock-row" style="flex-wrap:wrap;gap:.4rem">
+                <span class="mock-tag">情感共鸣</span>
+                <span class="mock-tag">口语化叙述</span>
+                <span class="mock-tag g">金句收尾</span>
+                <span class="mock-tag">短句节奏</span>
+              </div>
+            </div>
+            <div class="mock-block">
+              <div class="mock-line a"></div>
+              <div class="mock-line m"></div>
+              <div class="mock-line l"></div>
+              <div class="mock-line s"></div>
+              <div class="mock-line m"></div>
+            </div>
+            <div class="mock-row" style="justify-content:flex-end">
+              <div class="mock-btn">✍️ 用此风格生成</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- QUALITY 面板 -->
+    <div class="ft-panel" data-panel="quality" role="tabpanel">
+      <div class="ft-list">
+        <div class="ft-item active">
+          <div class="ft-item-icon" style="font-size:28px">🧬</div>
+          <div>
+            <div class="ft-item-title">去 AI 味闭环</div>
+            <div class="ft-item-desc">内置启发式 AI 痕迹评分，改写后自动重检，未达标自动再改（最多 3 轮），真人感拉满。</div>
+          </div>
+        </div>
+        <div class="ft-item">
+          <div class="ft-item-icon" style="font-size:28px">🔍</div>
+          <div>
+            <div class="ft-item-title">可解释内容检测</div>
+            <div class="ft-item-desc">AI味 / 违禁词 / 原创度 / 可读性四维报告，每处扣分都可定位，还能调模型做「AI 深度检测」，不是黑盒。</div>
+          </div>
+        </div>
+        <div class="ft-item">
+          <div class="ft-item-icon" style="font-size:28px">📚</div>
+          <div>
+            <div class="ft-item-title">本地知识库 RAG</div>
+            <div class="ft-item-desc">上传资料，纯本地关键词检索召回，不额外要 embedding Key，零成本。</div>
+          </div>
+        </div>
+      </div>
+      <div class="ft-preview reveal">
+        <div class="mock-win">
+          <div class="mock-bar">
+            <div class="mock-dot mock-dot-r"></div><div class="mock-dot mock-dot-y"></div><div class="mock-dot mock-dot-g"></div>
+            <span class="mock-bar-title">内容检测报告</span>
+          </div>
+          <div class="mock-body">
+            <div class="mock-row" style="justify-content:space-between">
+              <span style="font-size:.72rem;font-weight:700;color:var(--t0)">综合评分</span>
+              <span class="mock-tag g">通过 ✓</span>
+            </div>
+            <div class="mock-score">
+              <span class="mock-score-lbl">AI 痕迹</span>
+              <div class="mock-score-bar"><div class="mock-score-fill" data-w="88"></div></div>
+              <span class="mock-score-val">88</span>
+            </div>
+            <div class="mock-score">
+              <span class="mock-score-lbl">违禁词</span>
+              <div class="mock-score-bar"><div class="mock-score-fill" data-w="100" style="background:linear-gradient(90deg,#10b981,#34d399)"></div></div>
+              <span class="mock-score-val" style="color:var(--green)">100</span>
+            </div>
+            <div class="mock-score">
+              <span class="mock-score-lbl">原创度</span>
+              <div class="mock-score-bar"><div class="mock-score-fill" data-w="92"></div></div>
+              <span class="mock-score-val">92</span>
+            </div>
+            <div class="mock-score">
+              <span class="mock-score-lbl">可读性</span>
+              <div class="mock-score-bar"><div class="mock-score-fill" data-w="85"></div></div>
+              <span class="mock-score-val">85</span>
+            </div>
+            <div class="mock-block" style="margin-top:.25rem">
+              <div style="font-size:.68rem;color:var(--t2)">⚡ 第 2 轮改写后达标，共改动 12 处</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PUBLISH 面板 -->
+    <div class="ft-panel" data-panel="publish" role="tabpanel">
+      <div class="ft-list">
+        <div class="ft-item active">
+          <div class="ft-item-icon" style="font-size:28px">📱</div>
+          <div>
+            <div class="ft-item-title">排版 + 封面</div>
+            <div class="ft-item-desc">Markdown 秒变精美公众号图文，多套配色主题；一键生成 900×383 纯排版封面卡片。</div>
+          </div>
+        </div>
+        <div class="ft-item">
+          <div class="ft-item-icon" style="font-size:28px">🗂️</div>
+          <div>
+            <div class="ft-item-title">创作历史</div>
+            <div class="ft-item-desc">所有生成内容自动归档，随时回看、复制、删除，或一键「送去去 AI 味 / 排版 / 检测」。</div>
+          </div>
+        </div>
+        <div class="ft-item">
+          <div class="ft-item-icon" style="font-size:28px">🔌</div>
+          <div>
+            <div class="ft-item-title">多模型 BYOK · 故障切换</div>
+            <div class="ft-item-desc">自带 DeepSeek/通义/Kimi/智谱/GPT/Claude/Gemini 等 Key，加密存储，任一服务商挂了自动切换。</div>
+          </div>
+        </div>
+      </div>
+      <div class="ft-preview reveal">
+        <div class="mock-win">
+          <div class="mock-bar">
+            <div class="mock-dot mock-dot-r"></div><div class="mock-dot mock-dot-y"></div><div class="mock-dot mock-dot-g"></div>
+            <span class="mock-bar-title">排版编辑器</span>
+          </div>
+          <div class="mock-body">
+            <div class="mock-row" style="gap:.4rem;flex-wrap:wrap">
+              <span class="mock-tag" style="cursor:pointer">极简白</span>
+              <span class="mock-tag" style="background:rgba(37,99,235,.2);color:#60a5fa;border-color:rgba(37,99,235,.35);cursor:pointer">深夜蓝 ✓</span>
+              <span class="mock-tag o" style="cursor:pointer">暖橙</span>
+              <span class="mock-tag g" style="cursor:pointer">薄荷绿</span>
+            </div>
+            <div class="mock-block" style="flex:1">
+              <div class="mock-line a" style="width:60%;margin-bottom:.25rem"></div>
+              <div class="mock-line l"></div>
+              <div class="mock-line m"></div>
+              <div class="mock-line l"></div>
+              <div class="mock-line s"></div>
+              <div class="mock-line l"></div>
+              <div class="mock-line m"></div>
+            </div>
+            <div class="mock-row" style="justify-content:space-between">
+              <div class="mock-btn" style="background:rgba(255,255,255,.08);color:var(--t0);border:1px solid var(--b0)">🖼️ 生成封面</div>
+              <div class="mock-btn">📋 复制到公众号</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ========== WHY US ========== -->
+<section id="whyus" class="section">
+  <div class="container">
+    <div class="wu-header reveal">
+      <div class="sec-label">🏆 Why Us</div>
+      <h2 class="sec-title">凭什么比对标产品<span class="grad-text">更好用</span></h2>
+      <p class="sec-desc" style="margin:0 auto">不是堆功能，是把每个环节都做到别人做不到的深度。</p>
+    </div>
+    <div class="wu-grid">
+
+      <div class="wu-card card reveal d1">
+        <div class="wu-head">
+          <div class="wu-icon pu">🧩</div>
+          <div>
+            <div class="wu-card-title">全流程一条线</div>
+            <div class="wu-card-sub">从热点到封面，每步都能一键送到下一步</div>
+          </div>
+        </div>
+        <div class="wu-compare">
+          <div class="cmp-row">
+            <div class="cmp-them"><span class="icon-bad">✗</span>别家：各功能彼此割裂，手动复制粘贴</div>
+            <div class="cmp-us"><span class="icon-good">✓</span>我们：热点→标题→生成→去AI味→排版→封面，一键流转</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="wu-card card reveal d2">
+        <div class="wu-head">
+          <div class="wu-icon bl">🔍</div>
+          <div>
+            <div class="wu-card-title">检测可解释，不是黑盒</div>
+            <div class="wu-card-sub">每处扣分点精确定位，改起来有的放矢</div>
+          </div>
+        </div>
+        <div class="wu-compare">
+          <div class="cmp-row">
+            <div class="cmp-them"><span class="icon-bad">✗</span>别家：只给一个分数，不知道哪里出问题</div>
+            <div class="cmp-us"><span class="icon-good">✓</span>我们：四维报告定位到每句话，还能调自己的模型深度鉴别</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="wu-card card reveal d3">
+        <div class="wu-head">
+          <div class="wu-icon or">🛡️</div>
+          <div>
+            <div class="wu-card-title">多模型故障自动切换</div>
+            <div class="wu-card-sub">一家限流宕机，自动切到下一个，创作不中断</div>
+          </div>
+        </div>
+        <div class="wu-compare">
+          <div class="cmp-row">
+            <div class="cmp-them"><span class="icon-bad">✗</span>别家：绑定单一模型，服务商挂了就用不了</div>
+            <div class="cmp-us"><span class="icon-good">✓</span>我们：7 家可选，BYOK 加密存 Key，用量透明可见</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="wu-card card reveal d4">
+        <div class="wu-head">
+          <div class="wu-icon gr">💸</div>
+          <div>
+            <div class="wu-card-title">本地能力零额外成本</div>
+            <div class="wu-card-sub">检测、知识库、热点、封面全本地实现</div>
+          </div>
+        </div>
+        <div class="wu-compare">
+          <div class="cmp-row">
+            <div class="cmp-them"><span class="icon-bad">✗</span>别家：embedding、图像单独收费，隐性成本高</div>
+            <div class="cmp-us"><span class="icon-good">✓</span>我们：配一个对话模型 Key，全站能力立即可用</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ========== CTA ========== -->
+<section id="cta" class="section">
+  <div class="container">
+    <div class="cta-inner reveal">
+      <div class="cta-eyebrow">🎁 永久免费注册</div>
+      <h2 class="cta-title">现在就开始你的<br><span class="grad-text">爆款创作</span></h2>
+      <p class="cta-desc">注册后激活卡密即可解锁全部功能。<br>配一个你自己的模型 Key，全站能力立即可用。</p>
+      <div class="cta-btns">
+        <a href="#" class="btn btn-cta">🚀 免费注册，马上开始</a>
+        <a href="#features" class="btn btn-ghost">了解更多功能</a>
+      </div>
+      <div class="cta-note">
+        <span class="cta-note-item">✅ 无需信用卡</span>
+        <span class="cta-note-item">✅ Key 加密本地存储</span>
+        <span class="cta-note-item">✅ 随时可退出</span>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- ========== FOOTER ========== -->
+<footer>
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <div class="footer-logo">
+          <div class="footer-logo-icon">⚡</div>
+          <span class="footer-logo-text">云创爆文</span>
+        </div>
+        <p class="footer-desc">公众号 / 头条 AI 写作助手。从热点选题到成稿发布，一条流水线，去 AI 味，爆款率高。</p>
+        <div class="footer-socials">
+          <a href="#" class="footer-social" aria-label="微信">💬</a>
+          <a href="#" class="footer-social" aria-label="微博">🐦</a>
+          <a href="#" class="footer-social" aria-label="GitHub">🐙</a>
+        </div>
+      </div>
+      <div>
+        <div class="footer-col-title">产品</div>
+        <div class="footer-links">
+          <a href="#features">功能介绍</a>
+          <a href="#workflow">工作流</a>
+          <a href="#whyus">产品优势</a>
+          <a href="#">更新日志</a>
+        </div>
+      </div>
+      <div>
+        <div class="footer-col-title">支持</div>
+        <div class="footer-links">
+          <a href="#">使用文档</a>
+          <a href="#">常见问题</a>
+          <a href="#">联系我们</a>
+          <a href="#">意见反馈</a>
+        </div>
+      </div>
+      <div>
+        <div class="footer-col-title">关于</div>
+        <div class="footer-links">
+          <a href="#">关于我们</a>
+          <a href="#">加入我们</a>
+          <a href="#">合作伙伴</a>
+          <a href="#">公众号</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span class="footer-copy">© 2026 云创爆文. All rights reserved.</span>
+      <div class="footer-legal">
+        <a href="#">隐私政策</a>
+        <a href="#">服务条款</a>
+        <a href="#">免责声明</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<!-- ========== JS ========== -->
+<script src="js/particles.js"></script>
+<script src="js/navbar.js"></script>
+<script src="js/features.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

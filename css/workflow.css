@@ -1,0 +1,61 @@
+/* ============================================================
+   Workflow Section
+   ============================================================ */
+#workflow { background:var(--bg-1); position:relative; overflow:hidden }
+#workflow::before {
+  content:''; position:absolute; inset:0; pointer-events:none;
+  background:radial-gradient(ellipse 80% 50% at 50% 0%, rgba(124,58,237,.08) 0%, transparent 60%);
+}
+.wf-header { text-align:center; margin-bottom:3rem }
+
+/* 时间线 */
+.wf-line {
+  position:relative; display:flex; align-items:flex-start;
+  gap:0; padding-bottom:1rem;
+}
+.wf-line::before {
+  content:''; position:absolute; top:32px; left:5%; right:5%; height:2px;
+  background:linear-gradient(90deg, transparent, var(--p0) 20%, var(--p1) 80%, transparent);
+  background-size:200% 100%; z-index:0;
+  animation:flow 3s linear infinite;
+}
+@keyframes flow { 0%{background-position:100% 0} 100%{background-position:-100% 0} }
+
+/* 每步 */
+.wf-step {
+  flex:1; min-width:140px; display:flex; flex-direction:column;
+  align-items:center; position:relative; z-index:1; padding:0 .75rem;
+}
+.wf-node {
+  width:64px; height:64px; border-radius:50%; background:var(--grad);
+  display:flex; align-items:center; justify-content:center; font-size:26px;
+  margin-bottom:1.25rem; position:relative; flex-shrink:0;
+  box-shadow:0 0 0 6px rgba(124,58,237,.14), var(--gp);
+  transition:transform 300ms var(--spring), box-shadow 300ms;
+}
+.wf-step:hover .wf-node { transform:scale(1.12); box-shadow:0 0 0 8px rgba(124,58,237,.22),0 0 48px rgba(124,58,237,.4) }
+.wf-num {
+  position:absolute; top:-4px; right:-4px;
+  width:20px; height:20px; background:var(--orange); border-radius:50%;
+  font-size:10px; font-weight:800; color:#fff;
+  display:flex; align-items:center; justify-content:center;
+  border:2px solid var(--bg-1);
+}
+.wf-title { font-size:.9rem; font-weight:700; color:var(--t0); margin-bottom:.35rem; text-align:center }
+.wf-desc  { font-size:.72rem; color:var(--t1); line-height:1.6; text-align:center; max-width:120px; margin:0 auto }
+
+/* 移动端纵向 */
+@media(max-width:768px) {
+  .wf-line { flex-direction:column; align-items:flex-start; gap:0 }
+  .wf-line::before {
+    top:0; bottom:0; left:31px; right:auto;
+    width:2px; height:auto;
+    background:linear-gradient(180deg, transparent, var(--p0) 20%, var(--p1) 80%, transparent);
+    background-size:100% 200%; animation:flowV 3s linear infinite;
+  }
+  @keyframes flowV { 0%{background-position:0 100%} 100%{background-position:0 -100%} }
+  .wf-step { flex-direction:row; align-items:flex-start; gap:1rem; min-width:auto; width:100%; padding:.75rem 0 }
+  .wf-node { margin-bottom:0 }
+  .wf-title,.wf-desc { text-align:left }
+  .wf-desc { max-width:none; margin:0 }
+}
