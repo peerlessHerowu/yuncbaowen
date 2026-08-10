@@ -1,4 +1,7 @@
 import { chatWithFallback, streamWithFallback } from './chat'
+import { chatWithFallback, streamWithFallback } from './chat'
+import { detectPatterns } from './pattern-detector'
+import { HUMANIZER_SYSTEM_PROMPT } from './humanizer-prompt'
 import { query } from '../../db/connection'
 import type {
   TitleRequest, TitleResult,
@@ -158,47 +161,63 @@ ${req.content}
   return { results: JSON.parse(cleaned), provider }
 }
 
-// ─── 去 AI 味（闭环） ─────────────────────────────────────────
+// ─── 去 AI 味（双向闭环：规则引擎 + AI 定向改写）────────────────
 export async function deaiProcess(userId: number, req: DeAIRequest): Promise<DeAIResult> {
   const maxRounds = req.max_rounds ?? 3
   const PASS_SCORE = 80
   let current = req.content
   const rounds: DeAIResult['rounds'] = []
+  let lastProvider = 'rule-engine'
 
   for (let round = 1; round <= maxRounds; round++) {
-    const detectResult = await detectContent(userId, { content: current })
-    const score = detectResult.dimensions.ai_taste.score
 
-    if (score >= PASS_SCORE) {
-      rounds.push({ round, content: current, score, passed: true })
-      return { rounds, final_content: current, final_score: score, provider: detectResult.provider }
+    // Step 1：规则引擎检测（本地，零 token 消耗）
+    const ruleReport = detectPatterns(current)
+
+    // 规则引擎评分已达标，直接返回，不消耗 AI token
+    if (ruleReport.score >= PASS_SCORE) {
+      rounds.push({ round, content: current, score: ruleReport.score, passed: true })
+      return { rounds, final_content: current, final_score: ruleReport.score, provider: lastProvider }
     }
 
     if (round === maxRounds) {
-      rounds.push({ round, content: current, score, passed: false })
+      rounds.push({ round, content: current, score: ruleReport.score, passed: false })
       break
     }
 
-    // 改写
-    const issues = detectResult.dimensions.ai_taste.issues.map(i => `"${i.text}"`).join('、')
-    const prompt = `你是去AI味专家。以下文章被AI检测扣分，请改写使其更像真人写作。
-扣分点：${issues || '整体AI感较强'}
-改写要求：使用更口语化表达、增加个人视角和情感、打破机械句式、增加具体细节。
-当前评分：${score}分，目标：${PASS_SCORE}分以上。
+    // Step 2：AI 定向改写（humanizer system prompt + 规则引擎诊断结果）
+    const userPrompt = `请对以下文章进行去AI味改写。
+
+${ruleReport.hitCount > 0
+  ? `规则引擎检测到 ${ruleReport.hitCount} 处AI写作模式，请重点修复：\n${ruleReport.summary}`
+  : '规则引擎未发现明显模式，请从整体语气和句式进行优化。'
+}
+
+当前规则评分：${ruleReport.score}分，目标：${PASS_SCORE}分以上。
 直接输出改写后的文章，不要解释：
+
 ${current}`
 
-    const { content: rewritten } = await chatWithFallback(userId, [{ role: 'user', content: prompt }], { temperature: 0.9 })
-    rounds.push({ round, content: current, score, passed: false })
+    const { content: rewritten, provider } = await chatWithFallback(
+      userId,
+      [
+        { role: 'system', content: HUMANIZER_SYSTEM_PROMPT },
+        { role: 'user',   content: userPrompt },
+      ],
+      { temperature: 0.9 }
+    )
+    lastProvider = provider
+    rounds.push({ round, content: current, score: ruleReport.score, passed: false })
     current = rewritten
   }
 
-  const finalDetect = await detectContent(userId, { content: current })
+  // Step 3：最终规则复检
+  const finalReport = detectPatterns(current)
   return {
     rounds,
     final_content: current,
-    final_score: finalDetect.dimensions.ai_taste.score,
-    provider: finalDetect.provider,
+    final_score: finalReport.score,
+    provider: lastProvider,
   }
 }
 

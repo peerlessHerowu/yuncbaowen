@@ -41,7 +41,7 @@ async function callProvider(
   })
 
   const url = provider.baseURL + provider.chatPath
-  const resp = await fetch(url, { method: 'POST', headers, body, signal: AbortSignal.timeout(60000) })
+  const resp = await fetch(url, { method: 'POST', headers, body, signal: AbortSignal.timeout(120000) })
 
   if (!resp.ok) {
     const text = await resp.text()
