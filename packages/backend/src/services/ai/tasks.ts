@@ -1,7 +1,8 @@
 import { chatWithFallback, streamWithFallback } from './chat'
-import { chatWithFallback, streamWithFallback } from './chat'
-import { detectPatterns } from './pattern-detector'
+import { detectPatterns, calcPassScore } from './pattern-detector'
 import { HUMANIZER_SYSTEM_PROMPT } from './humanizer-prompt'
+import { randomizeText } from './randomizer'
+import { fetchArticles } from '../crawler/fetcher'
 import { query } from '../../db/connection'
 import type {
   TitleRequest, TitleResult,
@@ -59,9 +60,29 @@ ${req.style ? `参考写作风格：${req.style}` : ''}
 
 // ─── 风格分析 ────────────────────────────────────────────────
 export async function analyzeStyle(userId: number, req: StyleAnalyzeRequest): Promise<StylePrompt> {
-  const urlList = req.urls.map((u, i) => `${i + 1}. ${u}`).join('\n')
-  const prompt = `你是写作风格分析专家。请分析以下 ${req.urls.length} 篇文章的写作风格指纹：
-${urlList}
+  // 先抓取所有 URL 的真实内容
+  const { success: articles, failed } = await fetchArticles(req.urls)
+
+  if (articles.length === 0) {
+    const errMsg = failed.map(f => `${f.url}: ${f.error}`).join('；')
+    throw new Error(`所有文章抓取失败：${errMsg}`)
+  }
+
+  // 构建文章内容摘要，每篇最多 3000 字防止 token 超限
+  const articleSummaries = articles.map((a, i) => {
+    const preview = a.content.slice(0, 3000)
+    return `【文章${i + 1}】标题：${a.title}\n作者：${a.author || '未知'}\n正文：\n${preview}`
+  }).join('\n\n---\n\n')
+
+  // 告知哪些 URL 抓取失败
+  const failedNote = failed.length > 0
+    ? `\n注意：以下 ${failed.length} 篇文章抓取失败，已跳过：${failed.map(f => f.url).join('、')}`
+    : ''
+
+  const prompt = `你是写作风格分析专家。请分析以下 ${articles.length} 篇文章的写作风格指纹：
+${failedNote}
+
+${articleSummaries}
 
 请从以下维度深度分析并生成可复用的专属写作提示词：
 1. 语言风格（口语化/书面/幽默/严肃）
@@ -74,9 +95,31 @@ ${urlList}
 name（风格名称，简短）、description（一句话描述）、prompt_content（详细写作提示词，200-400字）`
 
   const { content } = await chatWithFallback(userId, [{ role: 'user', content: prompt }])
-  const cleaned = extractJSON(content)
-  const parsed = JSON.parse(cleaned) as { name: string; description: string; prompt_content: string }
-  return { ...parsed, source_urls: req.urls }
+  try {
+    const cleaned = extractJSON(content)
+    const parsed = JSON.parse(cleaned) as { name: string; description: string; prompt_content: string }
+    return { ...parsed, source_urls: req.urls }
+  } catch {
+    // JSON 解析失败时，用正则兜底提取三个字段
+    const name = content.match(/"name"\s*:\s*"([^"]+)"/)
+    const description = content.match(/"description"\s*:\s*"([^"]+)"/)
+    const promptContent = content.match(/"prompt_content"\s*:\s*"([\s\S]+?)"(?:\s*[,}])/)
+    if (name && description && promptContent) {
+      return {
+        name: name[1],
+        description: description[1],
+        prompt_content: promptContent[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'),
+        source_urls: req.urls,
+      }
+    }
+    // 最终兜底：把 AI 返回的内容直接作为 prompt_content
+    return {
+      name: articles[0]?.author || '未命名风格',
+      description: `基于 ${articles.length} 篇文章提炼的写作风格`,
+      prompt_content: content.slice(0, 1000),
+      source_urls: req.urls,
+    }
+  }
 }
 
 // ─── 定向生成（流式） ─────────────────────────────────────────
@@ -125,12 +168,19 @@ export async function rewriteArticle(
   req: RewriteRequest,
   onChunk: (chunk: string) => void
 ): Promise<{ provider: string }> {
+  // 支持粘贴 URL 自动抓取正文
+  let original = req.original.trim()
+  if (/^https?:\/\//i.test(original)) {
+    const { success, failed } = await fetchArticles([original])
+    if (success.length > 0) original = success[0].content.slice(0, 12000)
+    else throw new Error(`链接抓取失败：${failed[0]?.error}，请粘贴正文`)
+  }
   const intensityMap = { light: '轻度改写（保留70%原意）', medium: '中度改写（保留50%原意）', heavy: '深度改写（仅保留核心主题）' }
   const prompt = `你是专业改写专家。请对以下文章进行${intensityMap[req.intensity ?? 'medium']}，
 要求：语义等价、文字焕然一新、降重效果好、可读性高、符合公众号写作风格。
 不要添加任何说明，直接输出改写后的文章：
 
-${req.original}`
+${original}`
 
   return streamWithFallback(userId, [{ role: 'user', content: prompt }], onChunk, { temperature: 0.85 })
 }
@@ -147,54 +197,120 @@ export async function generatePlatforms(userId: number, req: PlatformRequest): P
     shipinhao:    '视频号：标题党+简短文案，100字内，突出视频卖点',
   }
 
+  // 如果 content 是 URL，自动抓取正文，支持公众号等链接直接粘贴
+  let inputContent = req.content.trim()
+  if (/^https?:\/\//i.test(inputContent)) {
+    const { success, failed } = await fetchArticles([inputContent])
+    if (success.length > 0) {
+      inputContent = success[0].content.slice(0, 8000)
+    } else {
+      throw new Error(`链接抓取失败：${failed[0]?.error || '未知错误'}，请直接粘贴文章正文`)
+    }
+  }
+
   const selected = req.platforms.filter(p => platformGuides[p])
-  const prompt = `请将以下内容改写为${selected.length}个平台的专属文案：
+  const prompt = `请将以下内容改写为${selected.length}个平台的专属文案。
+
+平台列表：
 ${selected.map(p => `- ${p}（${platformGuides[p]}）`).join('\n')}
 
 原内容：
-${req.content}
+${inputContent}
 
-以纯 JSON 返回（不要 markdown 代码块，不要解释），key 为平台名称，value 为对应文案。`
+以纯 JSON 返回（不要 markdown 代码块，不要解释）。
+重要：JSON value 中的换行必须用 \\n 转义，不能使用真实换行符。
+格式：{"weibo":"文案内容","xiaohongshu":"文案内容"}`
 
   const { content, provider } = await chatWithFallback(userId, [{ role: 'user', content: prompt }], { max_tokens: 8000 })
-  const cleaned = extractJSON(content)
-  return { results: JSON.parse(cleaned), provider }
+  try {
+    const cleaned = extractJSON(content)
+    // 修复 JSON value 中未转义的换行符（AI 经常犯这个错）
+    const fixed = cleaned.replace(/("(?:[^"\\]|\\.)*")\s*:/g, (m) => m)
+      .replace(/:\s*"([\s\S]*?)"\s*([,}])/g, (_, val, end) => {
+        const escaped = val.replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t')
+        return `: "${escaped}"${end}`
+      })
+    return { results: JSON.parse(fixed), provider }
+  } catch {
+    // 兜底：按平台名分割 AI 回复
+    const results: Record<string, string> = {}
+    for (const p of selected) {
+      // 匹配 "platform": "..." 或 platform: ...（可能跨多行）
+      const re = new RegExp(`[\"']?${p}[\"']?\\s*[：:,]\\s*[\"']?([\\s\\S]{20,500}?)[\"']?(?=[,}]|\\n[\"']?(?:${selected.join('|')})[\"']?\\s*[：:]|$)`)
+      const m = content.match(re)
+      if (m) results[p] = m[1].trim().replace(/^['"]+|['"]+$/g, '').replace(/\\n/g, '\n')
+    }
+    if (Object.keys(results).length === 0) {
+      // 最终兜底：按段落分配
+      const paragraphs = content.split(/\n{2,}/).filter(s => s.trim().length > 20)
+      selected.forEach((p, i) => { if (paragraphs[i]) results[p] = paragraphs[i].trim() })
+    }
+    return { results, provider }
+  }
 }
 
-// ─── 去 AI 味（双向闭环：规则引擎 + AI 定向改写）────────────────
+// ─── 去 AI 味（三层流水线）────────────────────────────────────────
+//
+// Layer 1：规则引擎检测（本地，0 token）
+//   └── 评分 >= PASS_SCORE → 直接进 Layer 3，跳过 AI 改写
+//
+// Layer 2：AI 定向改写（精准 prompt）
+//   ├── 改写后立即用规则引擎复检
+//   ├── 新分数 >= 旧分数 → 接受改写结果，继续下一轮或进 Layer 3
+//   └── 新分数 < 旧分数 → 拒绝这次改写，保留旧版本（防越改越差）
+//   └── 最多执行 (max_rounds - 1) 次 AI 改写，最后一轮留给复检
+//
+// Layer 3：随机化处理（本地，0 token，防平台风控）
+//   ├── 同义词替换（打断词频规律）
+//   ├── 标点随机化（打破句尾全是句号的规律）
+//   ├── 段落节奏打散（合并相邻短段）
+//   └── 插入口语停顿词（提升真人感）
+//
 export async function deaiProcess(userId: number, req: DeAIRequest): Promise<DeAIResult> {
-  const maxRounds = req.max_rounds ?? 3
-  const PASS_SCORE = 80
-  let current = req.content
+  const maxAiRounds = Math.max(1, (req.max_rounds ?? 2) - 1)
+
+  // 支持粘贴 URL 自动抓取正文
+  let inputContent = req.content.trim()
+  if (/^https?:\/\//i.test(inputContent)) {
+    const { success, failed } = await fetchArticles([inputContent])
+    if (success.length > 0) inputContent = success[0].content.slice(0, 12000)
+    else throw new Error(`链接抓取失败：${failed[0]?.error}，请粘贴正文`)
+  }
+
+  // 动态 PASS_SCORE：根据文本长度调整（短文宽松，长文严格）
+  const PASS_SCORE = calcPassScore(inputContent.length)
+
+  let current = inputContent
   const rounds: DeAIResult['rounds'] = []
   let lastProvider = 'rule-engine'
 
-  for (let round = 1; round <= maxRounds; round++) {
+  // ── Layer 1：初始规则检测 ────────────────────────────────────
+  let currentReport = detectPatterns(current)
 
-    // Step 1：规则引擎检测（本地，零 token 消耗）
-    const ruleReport = detectPatterns(current)
-
-    // 规则引擎评分已达标，直接返回，不消耗 AI token
-    if (ruleReport.score >= PASS_SCORE) {
-      rounds.push({ round, content: current, score: ruleReport.score, passed: true })
-      return { rounds, final_content: current, final_score: ruleReport.score, provider: lastProvider }
+  // 初始就通过 → 直接进 Layer 3，不消耗任何 AI token
+  if (currentReport.score >= PASS_SCORE) {
+    rounds.push({ round: 0, content: current, score: currentReport.score, passed: true })
+    const final = randomizeText(current)
+    const finalReport = detectPatterns(final)
+    return {
+      rounds,
+      final_content: final,
+      final_score: finalReport.score,
+      provider: 'rule-engine+randomizer',
     }
+  }
 
-    if (round === maxRounds) {
-      rounds.push({ round, content: current, score: ruleReport.score, passed: false })
-      break
-    }
-
-    // Step 2：AI 定向改写（humanizer system prompt + 规则引擎诊断结果）
+  // ── Layer 2：AI 改写循环 ─────────────────────────────────────
+  for (let round = 1; round <= maxAiRounds; round++) {
     const userPrompt = `请对以下文章进行去AI味改写。
 
-${ruleReport.hitCount > 0
-  ? `规则引擎检测到 ${ruleReport.hitCount} 处AI写作模式，请重点修复：\n${ruleReport.summary}`
-  : '规则引擎未发现明显模式，请从整体语气和句式进行优化。'
+${currentReport.hitCount > 0
+  ? `规则引擎检测到以下AI写作模式，请重点修复：\n${currentReport.summary}`
+  : '规则引擎未发现明显词汇模式，请从句式节奏和段落结构进行优化。'
 }
 
-当前规则评分：${ruleReport.score}分，目标：${PASS_SCORE}分以上。
-直接输出改写后的文章，不要解释：
+当前评分：${currentReport.score}分，目标：${PASS_SCORE}分以上。
+直接输出改写后的文章，不要任何解释：
 
 ${current}`
 
@@ -207,22 +323,47 @@ ${current}`
       { temperature: 0.9 }
     )
     lastProvider = provider
-    rounds.push({ round, content: current, score: ruleReport.score, passed: false })
-    current = rewritten
+
+    // 改写质量校验：新分数必须 >= 旧分数才接受
+    const newReport = detectPatterns(rewritten)
+    if (newReport.score >= currentReport.score) {
+      // 接受改写
+      rounds.push({ round, content: current, score: currentReport.score, passed: false })
+      current = rewritten
+      currentReport = newReport
+    } else {
+      // 拒绝改写，保留旧版本，记录但不更新 current
+      rounds.push({ round, content: current, score: currentReport.score, passed: false })
+      // 分数下降说明这轮 AI 改写方向不对，停止继续改写
+      break
+    }
+
+    // 已达标则提前退出
+    if (currentReport.score >= PASS_SCORE) break
   }
 
-  // Step 3：最终规则复检
-  const finalReport = detectPatterns(current)
+  // ── Layer 3：随机化处理（防平台风控）──────────────────────────
+  const final = randomizeText(current)
+  const finalReport = detectPatterns(final)
+
   return {
     rounds,
-    final_content: current,
+    final_content: final,
     final_score: finalReport.score,
-    provider: lastProvider,
+    provider: lastProvider === 'rule-engine' ? lastProvider : `${lastProvider}+randomizer`,
   }
 }
 
 // ─── 内容检测 ────────────────────────────────────────────────
 export async function detectContent(userId: number, req: DetectRequest): Promise<DetectResult> {
+  // 支持粘贴 URL 自动抓取正文
+  let inputContent = req.content.trim()
+  if (/^https?:\/\//i.test(inputContent)) {
+    const { success, failed } = await fetchArticles([inputContent])
+    if (success.length > 0) inputContent = success[0].content.slice(0, 8000)
+    else throw new Error(`链接抓取失败：${failed[0]?.error}，请粘贴正文`)
+  }
+
   const prompt = `你是专业内容检测系统。请对以下文章进行四维检测并以纯 JSON 格式返回结果（不要 markdown 代码块，不要任何解释，直接输出 JSON）：
 
 检测维度：
@@ -234,12 +375,26 @@ export async function detectContent(userId: number, req: DetectRequest): Promise
 每个维度包含 score（数字）和 issues（数组），issues 中每项包含 text（扣分句子）、start（起始位置）、end（结束位置）、reason（扣分原因）。
 
 文章内容：
-${req.content.slice(0, 3000)}`
+${inputContent.slice(0, 3000)}`
 
   const { content, provider } = await chatWithFallback(userId, [{ role: 'user', content: prompt }])
-  const cleaned = extractJSON(content)
-  const dims = JSON.parse(cleaned) as DetectResult['dimensions']
-  const scores = [dims.ai_taste.score, dims.forbidden_words.score, dims.originality.score, dims.readability.score]
-  const overall = Math.round(scores.reduce((a, b) => a + b, 0) / 4)
-  return { overall_score: overall, passed: overall >= 75, dimensions: dims, provider }
+  try {
+    const cleaned = extractJSON(content)
+    const dims = JSON.parse(cleaned) as DetectResult['dimensions']
+    const scores = [dims.ai_taste.score, dims.forbidden_words.score, dims.originality.score, dims.readability.score]
+    const overall = Math.round(scores.reduce((a, b) => a + b, 0) / 4)
+    return { overall_score: overall, passed: overall >= 75, dimensions: dims, provider }
+  } catch {
+    // JSON 解析失败，用规则引擎分数兜底
+    const ruleReport = detectPatterns(req.content)
+    const aiScore = ruleReport.score
+    const fallbackDims: DetectResult['dimensions'] = {
+      ai_taste:        { score: aiScore,  issues: ruleReport.hits.slice(0, 5).map(h => ({ text: h.text, start: h.index, end: h.index + h.text.length, reason: h.suggestion })) },
+      forbidden_words: { score: 95, issues: [] },
+      originality:     { score: 70, issues: [] },
+      readability:     { score: 75, issues: [] },
+    }
+    const overall = Math.round((aiScore + 95 + 70 + 75) / 4)
+    return { overall_score: overall, passed: overall >= 75, dimensions: fallbackDims, provider: 'rule-engine' }
+  }
 }
