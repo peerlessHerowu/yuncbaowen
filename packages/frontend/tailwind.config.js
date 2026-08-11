@@ -31,11 +31,19 @@ export default {
       animation: {
         'fade-in':    'fadeIn 200ms ease-out',
         'slide-up':   'slideUp 300ms ease-out',
+        'slide-in':   'slideIn 250ms ease-out',
+        'pop-in':     'popIn 200ms ease-out',
         'pulse-slow': 'pulse 3s ease-in-out infinite',
+        'spin-slow':  'spin 3s linear infinite',
       },
       keyframes: {
-        fadeIn:  { from: { opacity: '0' },                          to: { opacity: '1' } },
-        slideUp: { from: { opacity: '0', transform: 'translateY(8px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
+        fadeIn:  { from: { opacity: '0' },                               to: { opacity: '1' } },
+        slideUp: { from: { opacity: '0', transform: 'translateY(10px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
+        slideIn: { from: { opacity: '0', transform: 'translateX(16px)' }, to: { opacity: '1', transform: 'translateX(0)' } },
+        popIn:   { from: { opacity: '0', transform: 'scale(0.95)' },      to: { opacity: '1', transform: 'scale(1)' } },
+      },
+      screens: {
+        'xs': '480px',
       },
     },
   },

@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom'
 import {
   Zap, LayoutDashboard, TrendingUp, Type, Palette,
   PenTool, RefreshCw, Globe, Wand2, ScanText,
-  BookOpen, FileText, History, Settings, ChevronRight,
+  BookOpen, FileText, History, Settings, ChevronRight, X,
 } from 'lucide-react'
 import { useAuthStore } from '../../store/auth'
 import { cn } from '../../utils/cn'
@@ -22,9 +22,9 @@ const NAV_ITEMS = [
     { to: '/platform', icon: Globe,      label: '多平台推文' },
   ]},
   { group: '质检·更真更稳', items: [
-    { to: '/deai',    icon: Wand2,    label: '去 AI 味' },
-    { to: '/detect',  icon: ScanText, label: '内容检测' },
-    { to: '/knowledge',icon: BookOpen, label: '知识库' },
+    { to: '/deai',     icon: Wand2,     label: '去 AI 味' },
+    { to: '/detect',   icon: ScanText,  label: '内容检测' },
+    { to: '/knowledge',icon: BookOpen,  label: '知识库' },
   ]},
   { group: '成稿·直接发', items: [
     { to: '/layout',  icon: FileText, label: '文章排版' },
@@ -35,17 +35,30 @@ const NAV_ITEMS = [
   ]},
 ]
 
-export default function Sidebar() {
+interface SidebarProps {
+  onClose?: () => void
+}
+
+export default function Sidebar({ onClose }: SidebarProps) {
   const user = useAuthStore(s => s.user)
 
   return (
     <aside className="w-56 bg-dark-200 border-r border-dark-500 flex flex-col h-full shrink-0">
-      {/* Logo */}
+      {/* Logo + 移动端关闭按钮 */}
       <div className="flex items-center gap-2.5 px-4 py-4 border-b border-dark-500">
-        <div className="w-8 h-8 bg-gradient-to-br from-brand-500 to-blue-500 rounded-lg flex items-center justify-center shadow-lg">
+        <div className="w-8 h-8 bg-gradient-to-br from-brand-500 to-blue-500 rounded-xl flex items-center justify-center shadow-lg shrink-0">
           <Zap size={16} className="text-white" />
         </div>
-        <span className="font-bold text-slate-100 text-sm">云创爆文</span>
+        <span className="font-bold text-slate-100 text-sm flex-1">云创爆文</span>
+        {/* 移动端关闭按钮 */}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="md:hidden p-1 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-dark-400 transition-colors"
+          >
+            <X size={16} />
+          </button>
+        )}
       </div>
 
       {/* 激活状态提示 */}
