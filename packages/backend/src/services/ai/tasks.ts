@@ -3,6 +3,7 @@ import { detectPatterns, calcPassScore } from './pattern-detector'
 import { HUMANIZER_SYSTEM_PROMPT } from './humanizer-prompt'
 import { randomizeText } from './randomizer'
 import { fetchArticles } from '../crawler/fetcher'
+import { formatForPlatform } from '../platform/formatter'
 import { query } from '../../db/connection'
 import type {
   TitleRequest, TitleResult,
@@ -224,26 +225,28 @@ ${inputContent}
   const { content, provider } = await chatWithFallback(userId, [{ role: 'user', content: prompt }], { max_tokens: 8000 })
   try {
     const cleaned = extractJSON(content)
-    // 修复 JSON value 中未转义的换行符（AI 经常犯这个错）
     const fixed = cleaned.replace(/("(?:[^"\\]|\\.)*")\s*:/g, (m) => m)
       .replace(/:\s*"([\s\S]*?)"\s*([,}])/g, (_, val, end) => {
         const escaped = val.replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t')
         return `: "${escaped}"${end}`
       })
-    return { results: JSON.parse(fixed), provider }
+    const rawResults = JSON.parse(fixed) as Record<string, string>
+    // 对每个平台做格式化后处理
+    const formattedResults: Record<string, string> = {}
+    for (const [p, text] of Object.entries(rawResults)) {
+      formattedResults[p] = formatForPlatform(p, text)
+    }
+    return { results: formattedResults, provider }
   } catch {
-    // 兜底：按平台名分割 AI 回复
     const results: Record<string, string> = {}
     for (const p of selected) {
-      // 匹配 "platform": "..." 或 platform: ...（可能跨多行）
       const re = new RegExp(`[\"']?${p}[\"']?\\s*[：:,]\\s*[\"']?([\\s\\S]{20,500}?)[\"']?(?=[,}]|\\n[\"']?(?:${selected.join('|')})[\"']?\\s*[：:]|$)`)
       const m = content.match(re)
-      if (m) results[p] = m[1].trim().replace(/^['"]+|['"]+$/g, '').replace(/\\n/g, '\n')
+      if (m) results[p] = formatForPlatform(p, m[1].trim().replace(/^['"]+|['"]+$/g, '').replace(/\\n/g, '\n'))
     }
     if (Object.keys(results).length === 0) {
-      // 最终兜底：按段落分配
       const paragraphs = content.split(/\n{2,}/).filter(s => s.trim().length > 20)
-      selected.forEach((p, i) => { if (paragraphs[i]) results[p] = paragraphs[i].trim() })
+      selected.forEach((p, i) => { if (paragraphs[i]) results[p] = formatForPlatform(p, paragraphs[i].trim()) })
     }
     return { results, provider }
   }
