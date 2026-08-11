@@ -30,6 +30,8 @@ export const aiApi = {
     api.post('/ai/deai', data),
   detect: (data: DetectRequest) =>
     api.post('/ai/detect', data),
+  format: (content: string) =>
+    api.post<{ success: boolean; data: { formatted: string } }>('/ai/format', { content }),
 }
 
 // ── Trending ────────────────────────────────────────────────────
@@ -45,9 +47,11 @@ export const knowledgeApi = {
     form.append('file', file)
     return api.post('/knowledge/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } })
   },
-  list:   () => api.get('/knowledge/list'),
-  delete: (id: number) => api.delete(`/knowledge/${id}`),
-  search: (query: string, doc_ids?: number[]) => api.post('/knowledge/search', { query, doc_ids }),
+  list:        () => api.get('/knowledge/list'),
+  delete:      (id: number) => api.delete(`/knowledge/${id}`),
+  search:      (query: string, doc_ids?: number[]) => api.post('/knowledge/search', { query, doc_ids }),
+  importUrl:   (url: string) => api.post('/knowledge/import-url', { url }),
+  importText:  (text: string, title?: string) => api.post('/knowledge/import-text', { text, title }),
 }
 
 // ── Style ───────────────────────────────────────────────────────

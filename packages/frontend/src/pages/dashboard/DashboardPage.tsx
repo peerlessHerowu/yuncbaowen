@@ -40,6 +40,10 @@ export default function DashboardPage() {
   const [cardKey,  setCardKey]  = useState('')
   const [activating, setActivating] = useState(false)
 
+  // 根据时段问候
+  const hour = new Date().getHours()
+  const greeting = hour < 6 ? '夜深了' : hour < 11 ? '早上好' : hour < 14 ? '午安' : hour < 18 ? '下午好' : hour < 22 ? '晚上好' : '夜深了'
+
   useEffect(() => {
     creationApi.stats().then(r => setStats(r.data.data)).finally(() => setLoading(false))
   }, [])
@@ -64,7 +68,7 @@ export default function DashboardPage() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-100">
-            你好，{user?.username} 👋
+            {greeting}，{user?.username} 👋
           </h1>
           <p className="text-sm text-slate-400 mt-1">
             {user?.is_activated
@@ -181,12 +185,22 @@ export default function DashboardPage() {
         <div className="flex items-center gap-2 mb-3">
           <Zap size={16} className="text-brand-400" />
           <span className="font-semibold text-slate-200">5步爆文工作流</span>
+          <span className="text-xs text-slate-500 ml-1">点击直接跳转</span>
         </div>
-        <div className="flex items-center gap-2 text-sm text-slate-400">
-          {['🔥 找热点', '💡 起标题', '✍️ 写全文', '🧬 去AI味', '📱 排版发'].map((s, i) => (
+        <div className="flex items-center gap-2 text-sm flex-wrap">
+          {[
+            { label: '🔥 找热点', to: '/trending' },
+            { label: '💡 起标题', to: '/title'    },
+            { label: '✍️ 写全文', to: '/generate'  },
+            { label: '🧬 去AI味', to: '/deai'      },
+            { label: '📱 排版发', to: '/layout'    },
+          ].map((s, i) => (
             <span key={i} className="flex items-center gap-2">
               {i > 0 && <ChevronRight size={12} className="text-slate-600" />}
-              <span>{s}</span>
+              <button onClick={() => navigate(s.to)}
+                className="text-slate-400 hover:text-brand-400 hover:underline transition-colors">
+                {s.label}
+              </button>
             </span>
           ))}
         </div>
