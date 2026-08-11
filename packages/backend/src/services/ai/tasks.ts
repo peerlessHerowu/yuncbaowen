@@ -30,13 +30,44 @@ function extractJSON(text: string): string {
 }
 
 // ─── 爆款标题 ────────────────────────────────────────────────
+// 13 种套路，每次随机选 count 个要覆盖的类型
+const ALL_TITLE_TYPES = [
+  { type: '悬念式',   hint: '隐藏关键信息，引发好奇心，让读者想点进来看答案' },
+  { type: '数字式',   hint: '用具体数字增加可信度，如「5个方法」「3天学会」' },
+  { type: '反差式',   hint: '打破常规认知，制造意外冲击，如「月薪3千的他，却活得比年薪百万的人更自由」' },
+  { type: '痛点式',   hint: '直击目标读者的真实痛苦，让人感同身受' },
+  { type: '福利式',   hint: '提供免费干货价值，让人觉得不看亏了' },
+  { type: '共鸣式',   hint: '让目标读者觉得「这说的就是我」，强烈代入感' },
+  { type: '案例式',   hint: '用真实人物故事开头，增加真实感和背书' },
+  { type: '对比式',   hint: '用鲜明对比证明价值，如「做了 vs 没做」「以前 vs 现在」' },
+  { type: '提问式',   hint: '直接向读者提问，引发自我审视和思考' },
+  { type: '打赌式',   hint: '用挑战语气激发读者好奇心，如「我打赌你没见过这个方法」' },
+  { type: '紧迫式',   hint: '制造时间紧迫感，如「2026年前必须知道的」' },
+  { type: '身份式',   hint: '用身份定位吸引目标人群，如「给还在迷茫的你」' },
+  { type: '趋势式',   hint: '蹭热点或时代感，让人觉得紧跟潮流' },
+]
+
 export async function generateTitles(userId: number, req: TitleRequest): Promise<TitleResult> {
   const count = req.count ?? 12
-  const prompt = `你是一位顶级公众号运营专家，擅长创作高点击率标题。
-请根据主题「${req.topic}」生成 ${count} 个不同套路的爆款标题。
-套路要覆盖：悬念式、数字式、反差式、痛点式、福利式、共鸣式。
-${req.style ? `参考写作风格：${req.style}` : ''}
-以纯 JSON 返回（不要 markdown 代码块，不要解释），格式为包含 titles 数组的对象，每项有 text（标题文字）和 type（套路名称）两个字段。`
+  // 每次随机选 min(count, 8) 个套路覆盖，让结果更多样
+  const shuffled = [...ALL_TITLE_TYPES].sort(() => Math.random() - 0.5)
+  const selectedTypes = shuffled.slice(0, Math.min(count, 8))
+  const typeList = selectedTypes.map(t => `- ${t.type}：${t.hint}`).join('\n')
+
+  const prompt = `你是一位顶级公众号运营专家，擅长写高点击率标题。
+
+主题：「${req.topic}」
+${req.style ? `写作风格参考：${req.style}` : ''}
+
+请用以下套路各生成 1-2 个标题，共生成 ${count} 个：
+${typeList}
+
+要求：
+- 标题长度 15-28 字（太短没信息量，太长会被截断）
+- 有具体细节，不要空洞（❌「如何提升效率」→ ✅「用这3个AI工具，我每天省了4小时」）
+- 避免违禁词：最好、最快、第一、最强
+
+以纯 JSON 返回（不要 markdown，直接输出），格式：{"titles":[{"text":"标题文字","type":"套路类型"}]}`
 
   const { content, provider } = await chatWithFallback(userId, [
     { role: 'user', content: prompt }
@@ -45,14 +76,13 @@ ${req.style ? `参考写作风格：${req.style}` : ''}
   try {
     const cleaned = extractJSON(content)
     const parsed = JSON.parse(cleaned) as { titles: Array<{ text: string; type: string }> }
-    return { titles: parsed.titles, provider }
+    return { titles: parsed.titles.slice(0, count + 3), provider }  // 多返回几个备用
   } catch {
-    // 解析失败时按行拆分降级处理
     const lines = content.split('\n').filter(l => l.trim() && !l.startsWith('```'))
     return {
       titles: lines.slice(0, count).map((text, i) => ({
         text: text.replace(/^\d+[.、]\s*/, '').trim(),
-        type: ['悬念式', '数字式', '反差式', '痛点式', '福利式', '共鸣式'][i % 6],
+        type: ALL_TITLE_TYPES[i % ALL_TITLE_TYPES.length].type,
       })),
       provider,
     }
@@ -150,11 +180,23 @@ export async function generateArticle(
     knowledgeText = docs.map(d => `【${d.filename}】\n${d.content_text?.slice(0, 2000)}`).join('\n\n')
   }
 
+  const STRUCTURES = {
+    'total-split-total': '文章结构：总分总（先给结论，再展开论述，最后强化结论）',
+    'problem-solution':  '文章结构：问题解决型（先提出目标读者的真实痛点，再提供解决方案）',
+    'story-lead':        '文章结构：故事引入型（用一个真实小故事开头，再提炼出普适性规律）',
+    'listicle':          '文章结构：干货列表型（N个方法/技巧/建议，每个独立成节）',
+    'contrast':          '文章结构：对比型（普通人 vs 高手 / 做了 vs 没做 / 以前 vs 现在）',
+    'freeform':          '',
+  }
+  const structureHint = req.structure && req.structure !== 'freeform'
+    ? `\n${STRUCTURES[req.structure]}`
+    : ''
+
   const wordCount = req.word_count ?? 1500
   const systemPrompt = `你是顶级公众号爆文写手。${styleText ? `\n\n写作风格指导：\n${styleText}` : ''}`
-  const userPrompt = `请围绕主题「${req.topic}」写一篇约 ${wordCount} 字的公众号爆款文章。
-要求：标题吸引人、开头抓住读者、内容有价值、结尾有行动号召。
-${knowledgeText ? `\n参考资料（请基于以下资料写作，确保准确）：\n${knowledgeText}` : ''}
+  const userPrompt = `请围绕主题「${req.topic}」写一篇约 ${wordCount} 字的公众号爆款文章。${structureHint}
+要求：标题吸引人、开头前 3 句话必须抓住读者、内容有真实价值、结尾有行动号召。
+${knowledgeText ? `\n参考资料（请基于以下资料写作）：\n${knowledgeText}` : ''}
 直接输出文章正文，不需要任何额外说明。`
 
   return streamWithFallback(userId, [
@@ -176,11 +218,34 @@ export async function rewriteArticle(
     if (success.length > 0) original = success[0].content.slice(0, 12000)
     else throw new Error(`链接抓取失败：${failed[0]?.error}，请粘贴正文`)
   }
-  const intensityMap = { light: '轻度改写（保留70%原意）', medium: '中度改写（保留50%原意）', heavy: '深度改写（仅保留核心主题）' }
-  const prompt = `你是专业改写专家。请对以下文章进行${intensityMap[req.intensity ?? 'medium']}，
-要求：语义等价、文字焕然一新、降重效果好、可读性高、符合公众号写作风格。
-不要添加任何说明，直接输出改写后的文章：
 
+  const intensityMap = {
+    light:  '轻度改写（保留 80% 原意，换词换句，不改结构）',
+    medium: '中度改写（保留 60% 原意，调整结构和表达）',
+    heavy:  '深度改写（仅保留核心主题，完全重构）',
+  }
+
+  const intentMap = {
+    dedup:    '目标：降重，让文字焕然一新，过查重检测',
+    platform: '目标：风格转换，从公众号长文改写成小红书短文风格（分段短、有 emoji、有话题标签）',
+    casual:   '目标：口语化，把书面语改成自然对话风格',
+    fun:      '目标：增加趣味性，加入幽默感和人格魅力',
+  }
+
+  const intensityText = intensityMap[req.intensity ?? 'medium']
+  const intentText = req.intent ? intentMap[req.intent] : ''
+  const keywordsText = req.keywords ? `\n必须保留的词/短语（不能改动）：${req.keywords}` : ''
+
+  const prompt = `你是一位专业改写编辑。请对以下文章进行${intensityText}。
+${intentText}${keywordsText}
+
+改写要求：
+- 语义等价，不添加原文没有的事实
+- 文字焕然一新，可读性高
+- 符合公众号写作风格（除非指定平台转换）
+- 直接输出改写后的文章，不要任何前言或解释
+
+原文：
 ${original}`
 
   return streamWithFallback(userId, [{ role: 'user', content: prompt }], onChunk, { temperature: 0.85 })

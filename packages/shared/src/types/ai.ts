@@ -28,11 +28,14 @@ export interface GenerateRequest {
   use_knowledge: boolean
   knowledge_doc_ids?: number[]
   word_count?: number
+  structure?: 'total-split-total' | 'problem-solution' | 'story-lead' | 'listicle' | 'contrast' | 'freeform'
 }
 
 export interface RewriteRequest {
   original: string
   intensity?: 'light' | 'medium' | 'heavy'
+  intent?: 'dedup' | 'platform' | 'casual' | 'fun'  // 改写意图
+  keywords?: string  // 必须保留的关键词（逗号分隔）
 }
 
 export interface PlatformRequest {
