@@ -226,6 +226,13 @@ export async function rewriteArticle(
     else throw new Error(`链接抓取失败：${failed[0]?.error}，请粘贴正文`)
   }
 
+  // 安全清理：移除抓取内容中残留的代码/脚本片段
+  original = original
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/(?:^|\n)(?:var |function |const |let )[\s\S]*?(?=\n\n|$)/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+
   // 降重意图 → 走专用降重管道
   if (req.intent === 'dedup') {
     const { runDedupPipeline } = await import('./rewrite-pipeline')
