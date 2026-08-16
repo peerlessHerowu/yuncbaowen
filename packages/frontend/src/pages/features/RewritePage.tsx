@@ -1,12 +1,13 @@
-import { useState, useRef } from 'react'
-import { RefreshCw, Loader2, Copy, Check, ArrowLeftRight, Square } from 'lucide-react'
-import { readStream } from '../../utils/stream'
+import { useState, useRef, useEffect } from 'react'
+import { RefreshCw, Loader2, Copy, Check, ArrowLeftRight, Square, Shield, Sparkles, Info } from 'lucide-react'
+import { readStream, type StreamEvent } from '../../utils/stream'
 import { useAuthStore } from '../../store/auth'
 import toast from 'react-hot-toast'
 import { cn } from '../../utils/cn'
 
 type Intensity = 'light' | 'medium' | 'heavy'
 type Intent = 'dedup' | 'platform' | 'casual' | 'fun'
+type Stage = 'idle' | 'rewriting' | 'checking' | 'fixing' | 'randomizing' | 'done'
 
 const INTENSITY_OPTIONS: Array<{ id: Intensity; label: string; pct: string; desc: string }> = [
   { id: 'light',  label: '轻度', pct: '保留80%', desc: '换词换句，保持原结构' },
@@ -21,6 +22,15 @@ const INTENT_OPTIONS: Array<{ id: Intent; label: string; icon: string; desc: str
   { id: 'fun',      label: '增加趣味',   icon: '✨', desc: '加入幽默感和人格魅力' },
 ]
 
+const STAGE_LABELS: Record<Stage, string> = {
+  idle:        '',
+  rewriting:   'AI 改写中',
+  checking:    '检测连续词',
+  fixing:      '优化修补中',
+  randomizing: '润色处理中',
+  done:        '完成',
+}
+
 export default function RewritePage() {
   const token     = useAuthStore(s => s.token)
   const [original,  setOriginal]  = useState('')
@@ -30,16 +40,37 @@ export default function RewritePage() {
   const [keywords,  setKeywords]  = useState('')
   const [streaming, setStreaming] = useState(false)
   const [copied,    setCopied]    = useState(false)
+  const [stage,     setStage]     = useState<Stage>('idle')
+  const [progress,  setProgress]  = useState(0)
+  const [similarity, setSimilarity] = useState<number | null>(null)
+  const [fixCount,  setFixCount]  = useState(0)
   const abortRef = useRef<AbortController>()
   const outputRef = useRef<HTMLDivElement>(null)
+
+  // 相似度数字动画
+  const [displaySim, setDisplaySim] = useState(0)
+  useEffect(() => {
+    if (similarity === null) { setDisplaySim(0); return }
+    const target = similarity
+    const start = performance.now()
+    const duration = 400
+    function tick(now: number) {
+      const p = Math.min((now - start) / duration, 1)
+      const eased = 1 - Math.pow(1 - p, 3)
+      setDisplaySim(+(target * eased).toFixed(1))
+      if (p < 1) requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  }, [similarity])
 
   async function rewrite() {
     if (!original.trim()) return void toast.error('请输入原文或粘贴公众号链接')
     if (original.trim().length < 30) return void toast.error('原文至少 30 字')
-    setOutput(''); setStreaming(true)
+    setOutput(''); setStreaming(true); setStage('rewriting'); setProgress(0.05)
+    setSimilarity(null); setFixCount(0)
     abortRef.current = new AbortController()
     try {
-      await readStream('/api/ai/rewrite', {
+      const finalEvent = await readStream('/api/ai/rewrite', {
         original: original.trim(),
         intensity,
         intent: intent || undefined,
@@ -47,19 +78,35 @@ export default function RewritePage() {
       }, chunk => {
         setOutput(p => p + chunk)
         if (outputRef.current) outputRef.current.scrollTop = outputRef.current.scrollHeight
-      }, token || undefined)
+      }, token || undefined, (event: StreamEvent) => {
+        if (event.stage) setStage(event.stage as Stage)
+        if (event.progress !== undefined) setProgress(event.progress)
+        if (event.similarity !== undefined) setSimilarity(event.similarity)
+        if (event.fixCount !== undefined) setFixCount(event.fixCount as number)
+        if (event.done) setStage('done')
+      })
+      // 如果有最终相似度信息
+      if (finalEvent?.similarity !== undefined) {
+        setSimilarity(finalEvent.similarity)
+      }
       toast.success('仿写完成，已保存到创作历史')
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
         toast.error(err instanceof Error ? err.message : '仿写失败')
       }
+      setStage('idle')
     } finally { setStreaming(false) }
   }
 
   function stop() {
     abortRef.current?.abort()
-    setStreaming(false)
+    setStreaming(false); setStage('idle')
     toast('已停止生成', { icon: '⏹️' })
+  }
+
+  function regenerate() {
+    setOutput(''); setSimilarity(null); setFixCount(0); setStage('idle')
+    rewrite()
   }
 
   async function copy() {
@@ -68,8 +115,17 @@ export default function RewritePage() {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  const isDedup = intent === 'dedup'
+  const simColor = similarity === null ? '' :
+    similarity < 5 ? 'text-emerald-400' :
+    similarity < 10 ? 'text-amber-400' : 'text-red-400'
+  const simBg = similarity === null ? '' :
+    similarity < 5 ? 'bg-emerald-500/10 border-emerald-500/20' :
+    similarity < 10 ? 'bg-amber-500/10 border-amber-500/20' : 'bg-red-500/10 border-red-500/20'
+
   return (
     <div className="space-y-5 animate-fade-in">
+      {/* 页面标题 */}
       <div className="section-header">
         <div className="flex items-center gap-3 mb-1">
           <RefreshCw size={20} className="text-teal-400" />
@@ -78,16 +134,16 @@ export default function RewritePage() {
         <p className="section-desc">语义等价、文字焕然一新，支持降重、换平台风格、口语化等多种改写意图</p>
       </div>
 
-      {/* 改写意图（新增） */}
+      {/* 改写意图选择 */}
       <div className="card p-4">
         <p className="text-xs text-slate-400 mb-3">改写目标（可选，不选则通用改写）</p>
         <div className="grid grid-cols-4 gap-2">
           {INTENT_OPTIONS.map(o => (
             <button key={o.id} onClick={() => setIntent(intent === o.id ? null : o.id)}
               className={cn(
-                'p-3 rounded-xl text-left border transition-all',
+                'relative p-3 rounded-xl text-left border transition-all',
                 intent === o.id
-                  ? 'bg-teal-500/10 border-teal-500/30 text-teal-300'
+                  ? 'bg-teal-500/10 border-teal-500/30 text-teal-300 before:absolute before:left-0 before:top-3 before:bottom-3 before:w-0.5 before:bg-brand-500 before:rounded-full'
                   : 'bg-dark-300 border-dark-500 text-slate-400 hover:border-dark-400'
               )}>
               <div className="text-base mb-1">{o.icon}</div>
@@ -97,6 +153,14 @@ export default function RewritePage() {
           ))}
         </div>
       </div>
+
+      {/* 降重提示条 */}
+      {isDedup && (
+        <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-teal-500/[0.06] border border-teal-500/20 text-teal-300 text-xs animate-slide-up">
+          <Shield size={14} className="shrink-0 opacity-70" />
+          <span>建议选择「中度」或「深度」强度以获得最佳降重效果。深度模式将完全重构文章骨架，相似度更低。</span>
+        </div>
+      )}
 
       {/* 改写强度 */}
       <div className="flex gap-3">
@@ -118,7 +182,7 @@ export default function RewritePage() {
 
       {/* 双栏编辑区 */}
       <div className="grid grid-cols-2 gap-4">
-        {/* 原文 */}
+        {/* 原文面板 */}
         <div className="card overflow-hidden flex flex-col">
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-dark-500 shrink-0">
             <span className="text-sm font-medium text-slate-300">原文</span>
@@ -136,7 +200,7 @@ export default function RewritePage() {
             </div>
           )}
 
-          {/* 保留关键词（折叠）*/}
+          {/* 保留关键词 */}
           <div className="border-t border-dark-500 px-4 py-2.5">
             <input
               value={keywords}
@@ -161,20 +225,25 @@ export default function RewritePage() {
           </div>
         </div>
 
-        {/* 仿写结果 */}
+        {/* 结果面板 */}
         <div className="card overflow-hidden flex flex-col">
+          {/* 标题栏 + 进度指示 */}
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-dark-500 shrink-0">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-slate-300">仿写结果</span>
-              {streaming && (
-                <span className="flex items-center gap-1 text-[10px] text-teal-400 bg-teal-500/10 px-2 py-0.5 rounded-full">
-                  <Loader2 size={9} className="animate-spin" />生成中
+              {streaming && stage !== 'done' && (
+                <span className="flex items-center gap-1.5 text-[10px] text-teal-400 bg-teal-500/10 px-2.5 py-0.5 rounded-full">
+                  {stage === 'rewriting' && <Loader2 size={9} className="animate-spin" />}
+                  {stage === 'checking' && <Shield size={9} />}
+                  {stage === 'fixing' && <Sparkles size={9} />}
+                  {STAGE_LABELS[stage]}
+                  {stage === 'fixing' && fixCount > 0 && ` (${fixCount}处)`}
                 </span>
               )}
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs text-slate-500">{output.trim().length} 字</span>
-              {output && (
+              {output && !streaming && (
                 <button onClick={copy}
                   className={cn('flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all',
                     copied ? 'text-emerald-400 bg-emerald-500/10' : 'text-slate-400 hover:text-slate-200 hover:bg-dark-400'
@@ -185,21 +254,79 @@ export default function RewritePage() {
             </div>
           </div>
 
+          {/* 进度条（仅改写中显示） */}
+          {streaming && stage !== 'done' && (
+            <div className="h-[3px] bg-dark-500">
+              <div
+                className="h-full rounded-full transition-all duration-700 ease-out bg-gradient-to-r from-brand-600 to-teal-400"
+                style={{ width: `${Math.min(progress * 100, 98)}%` }}
+              />
+            </div>
+          )}
+
+          {/* 降重状态栏（完成后显示相似度） */}
+          {stage === 'done' && isDedup && similarity !== null && (
+            <div className={cn('mx-3 mt-3 px-4 py-3 rounded-xl border animate-pop-in', simBg)}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-baseline gap-0.5">
+                    <span className={cn('text-2xl font-bold tabular-nums', simColor)}>
+                      {displaySim}
+                    </span>
+                    <span className={cn('text-sm opacity-60', simColor)}>%</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-slate-300 font-medium">
+                      {similarity < 5 ? '✓ 原创' : similarity < 10 ? '⚠ 轻度相似' : '✗ 相似度偏高'}
+                    </span>
+                    <span className="text-[10px] text-slate-500">预估相似度</span>
+                  </div>
+                </div>
+                {fixCount > 0 && (
+                  <span className="text-[10px] text-slate-500 flex items-center gap-1">
+                    <Sparkles size={10} />已修补 {fixCount} 处连续词
+                  </span>
+                )}
+              </div>
+              <p className="text-[10px] text-slate-600 mt-1.5 flex items-center gap-1">
+                <Info size={9} />仅为预估值，实际以查重平台检测结果为准
+              </p>
+            </div>
+          )}
+
+          {/* 输出内容区 */}
           <div ref={outputRef} className="flex-1 overflow-y-auto p-4 min-h-72">
             {output ? (
-              <div className={cn('article-content text-sm leading-relaxed', streaming && 'after:content-["|"] after:animate-pulse after:text-brand-400')}>
+              <div className={cn(
+                'article-content text-sm leading-relaxed whitespace-pre-wrap break-words',
+                streaming && stage === 'rewriting' && 'typing-cursor'
+              )}>
                 {output}
               </div>
             ) : (
-              <div className="h-full flex items-center justify-center text-center gap-3 flex-col text-slate-600">
-                <ArrowLeftRight size={28} className="opacity-30" />
-                <p className="text-sm">仿写结果将显示在这里</p>
+              <div className="h-full flex flex-col items-center justify-center gap-4 text-center px-8">
+                <div className="relative w-16 h-16">
+                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-teal-500/10 to-brand-500/5 rotate-6" />
+                  <div className="absolute inset-0 rounded-2xl bg-dark-300 flex items-center justify-center">
+                    <ArrowLeftRight size={24} className="text-slate-600" />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm text-slate-400 font-medium">仿写结果将在这里呈现</p>
+                  <p className="text-xs text-slate-600">粘贴原文 → 选择参数 → 点击开始</p>
+                </div>
               </div>
             )}
           </div>
 
+          {/* 底部操作栏 */}
           {output && !streaming && (
-            <div className="border-t border-dark-500 px-4 py-2.5 flex gap-2 shrink-0">
+            <div className="border-t border-dark-500 px-4 py-2.5 flex items-center gap-2 shrink-0">
+              <button onClick={regenerate}
+                className="btn-ghost text-xs py-1.5 px-2.5">
+                <RefreshCw size={12} />重新生成
+              </button>
+              <div className="w-px h-4 bg-dark-500" />
               <a href="/deai" className="btn-secondary text-xs py-1.5 px-3">🧬 去AI味</a>
               <a href="/detect" className="btn-secondary text-xs py-1.5 px-3">🔍 检测</a>
               <a href="/layout" className="btn-secondary text-xs py-1.5 px-3">📱 排版</a>

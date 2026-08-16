@@ -206,11 +206,18 @@ ${knowledgeText ? `\n参考资料（请基于以下资料写作）：\n${knowled
 }
 
 // ─── 二次仿写 ────────────────────────────────────────────────
+export interface RewriteResult {
+  provider: string
+  similarity?: number
+  fixCount?: number
+}
+
 export async function rewriteArticle(
   userId: number,
   req: RewriteRequest,
-  onChunk: (chunk: string) => void
-): Promise<{ provider: string }> {
+  onChunk: (chunk: string) => void,
+  onStage?: (stage: string, progress: number, meta?: Record<string, unknown>) => void
+): Promise<RewriteResult> {
   // 支持粘贴 URL 自动抓取正文
   let original = req.original.trim()
   if (/^https?:\/\//i.test(original)) {
@@ -219,6 +226,26 @@ export async function rewriteArticle(
     else throw new Error(`链接抓取失败：${failed[0]?.error}，请粘贴正文`)
   }
 
+  // 降重意图 → 走专用降重管道
+  if (req.intent === 'dedup') {
+    const { runDedupPipeline } = await import('./rewrite-pipeline')
+    const result = await runDedupPipeline({
+      userId,
+      original,
+      intensity: req.intensity ?? 'medium',
+      intent: 'dedup',
+      keywords: req.keywords,
+      onChunk,
+      onStage: onStage || (() => {}),
+    })
+    return {
+      provider: result.provider,
+      similarity: result.similarity,
+      fixCount: result.fixCount,
+    }
+  }
+
+  // 非降重意图 → 保持原逻辑
   const intensityMap = {
     light:  '轻度改写（保留 80% 原意，换词换句，不改结构）',
     medium: '中度改写（保留 60% 原意，调整结构和表达）',
@@ -226,7 +253,6 @@ export async function rewriteArticle(
   }
 
   const intentMap = {
-    dedup:    '目标：降重，让文字焕然一新，过查重检测',
     platform: '目标：风格转换，从公众号长文改写成小红书短文风格（分段短、有 emoji、有话题标签）',
     casual:   '目标：口语化，把书面语改成自然对话风格',
     fun:      '目标：增加趣味性，加入幽默感和人格魅力',
@@ -248,7 +274,8 @@ ${intentText}${keywordsText}
 原文：
 ${original}`
 
-  return streamWithFallback(userId, [{ role: 'user', content: prompt }], onChunk, { temperature: 0.85 })
+  const result = await streamWithFallback(userId, [{ role: 'user', content: prompt }], onChunk, { temperature: 0.8 })
+  return { provider: result.provider }
 }
 
 // ─── 多平台推文 ───────────────────────────────────────────────

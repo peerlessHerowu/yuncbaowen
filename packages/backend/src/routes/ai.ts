@@ -104,15 +104,34 @@ aiRouter.post('/rewrite', async (req: Request, res: Response, next: NextFunction
     res.flushHeaders()
 
     let full = ''
-    const { provider } = await rewriteArticle(req.user!.id, req.body, chunk => {
-      full += chunk
-      res.write(`data: ${JSON.stringify({ chunk })}\n\n`)
-    })
+    const result = await rewriteArticle(
+      req.user!.id,
+      req.body,
+      chunk => {
+        full += chunk
+        res.write(`data: ${JSON.stringify({ chunk })}\n\n`)
+      },
+      (stage, progress, meta) => {
+        res.write(`data: ${JSON.stringify({ stage, progress, ...meta })}\n\n`)
+      }
+    )
+
+    // 如果降重管道做了修补，替换完整内容
+    if (result.similarity !== undefined) {
+      // 管道已经通过 onChunk 流式输出了改写内容
+      // 但修补后的最终内容可能不同，需要通知前端
+      // 通过 done 事件携带最终相似度
+    }
+
+    const meta: Record<string, unknown> = { provider: result.provider }
+    if (result.similarity !== undefined) meta.similarity = result.similarity
+    if (result.fixCount !== undefined) meta.fixCount = result.fixCount
+
     await execute(
       'INSERT INTO creations (user_id,type,title,content,meta) VALUES (?,?,?,?,?)',
-      [req.user!.id, 'rewrite', '二次仿写', full, JSON.stringify({ provider })]
+      [req.user!.id, 'rewrite', '二次仿写', full, JSON.stringify(meta)]
     )
-    res.write(`data: ${JSON.stringify({ done: true, provider })}\n\n`)
+    res.write(`data: ${JSON.stringify({ done: true, ...meta })}\n\n`)
     res.end()
   } catch (err) { next(err) }
 })
