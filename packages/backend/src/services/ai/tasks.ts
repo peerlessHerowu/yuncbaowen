@@ -278,6 +278,100 @@ ${original}`
   return { provider: result.provider }
 }
 
+// ─── L3 信息重组：提取核心要点 ───────────────────────────────
+export async function extractPoints(
+  userId: number,
+  original: string
+): Promise<{ points: string[]; suggestedStructure: string; provider: string }> {
+  // 支持 URL 输入
+  let text = original.trim()
+  if (/^https?:\/\//i.test(text)) {
+    const { success, failed } = await fetchArticles([text])
+    if (success.length > 0) text = success[0].content.slice(0, 12000)
+    else throw new Error(`链接抓取失败：${failed[0]?.error}，请粘贴正文`)
+  }
+
+  const prompt = `请阅读以下文章，提取其中所有核心信息点。
+
+要求：
+1. 每个要点是一个完整的陈述句（15-40字）
+2. 只提取事实和观点，不保留原文的任何措辞和修辞
+3. 提取 5-10 个最重要的信息点
+4. 按逻辑重要性排序（最重要的在前）
+5. 同时推荐一个适合重新写作的结构类型
+
+以纯 JSON 返回（不要 markdown 代码块）：
+{"points":["要点1","要点2",...],"structure":"story-lead"}
+
+structure 可选值：
+- story-lead: 故事引入式
+- problem-solution: 问题-方案式
+- contrast: 对比论证式
+- listicle: 清单式
+- total-split-total: 总分总
+
+原文：
+${text}`
+
+  const result = await chatWithFallback(userId, [{ role: 'user', content: prompt }], { temperature: 0.3 })
+
+  try {
+    const cleaned = result.content
+      .replace(/^\s*```(?:json)?\s*\n?/i, '')
+      .replace(/\n?\s*```\s*$/i, '')
+      .trim()
+    const parsed = JSON.parse(cleaned) as { points: string[]; structure: string }
+    return {
+      points: parsed.points || [],
+      suggestedStructure: parsed.structure || 'story-lead',
+      provider: result.provider,
+    }
+  } catch {
+    throw new Error('要点提取失败，请重试')
+  }
+}
+
+// ─── L3 信息重组：基于要点生成新文章 ─────────────────────────
+export async function rewriteFromPoints(
+  userId: number,
+  points: string[],
+  structure: string,
+  wordCount: number,
+  keywords: string | undefined,
+  onChunk: (chunk: string) => void
+): Promise<{ provider: string }> {
+  const structureGuide: Record<string, string> = {
+    'story-lead':      '以一个具体场景或故事开头，引出主题，然后展开论述',
+    'problem-solution': '先描述问题/痛点，再逐步给出解决方案',
+    'contrast':         '正反对比、新旧对比或多方案对比',
+    'listicle':         '以编号列表组织，每个点有小标题+展开',
+    'total-split-total': '先总述观点，分别论证，最后总结',
+  }
+
+  const guide = structureGuide[structure] || structureGuide['story-lead']
+  const keywordsHint = keywords ? `\n必须自然融入以下关键词：${keywords}` : ''
+
+  const prompt = `你是一位资深公众号写手。请基于以下核心信息点，用你自己的方式写一篇全新的文章。
+
+要求：
+1. 文章结构：${guide}
+2. 字数约 ${wordCount} 字
+3. 完全用自己的话表达，不要参考任何已有文章的措辞
+4. 语言自然流畅，像真人公众号作者的风格
+5. 段落有长有短，节奏感好
+6. 不要用「首先/其次/最后」「综上所述」等套话${keywordsHint}
+
+核心信息点：
+${points.map((p, i) => `${i + 1}. ${p}`).join('\n')}
+
+直接输出文章正文，不要标题，不要任何前言或解释。`
+
+  return streamWithFallback(userId, [{ role: 'user', content: prompt }], onChunk, {
+    temperature: 0.8,
+    max_tokens: 6000,
+  })
+}
+
 // ─── 多平台推文 ───────────────────────────────────────────────
 export async function generatePlatforms(userId: number, req: PlatformRequest): Promise<PlatformResult> {
   const platformGuides: Record<string, string> = {

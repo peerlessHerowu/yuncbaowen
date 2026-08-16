@@ -115,6 +115,71 @@ export default function RewritePage() {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  // ─── L3 信息重组模式 ───────────────────────────────────
+  const [l3Points, setL3Points] = useState<string[]>([])
+  const [l3Structure, setL3Structure] = useState('story-lead')
+  const [l3Loading, setL3Loading] = useState(false)
+  const [l3Step, setL3Step] = useState<'idle' | 'points' | 'writing'>('idle')
+
+  const isL3Mode = intensity === 'heavy' && intent === 'dedup'
+
+  async function extractPointsFromOriginal() {
+    if (!original.trim()) return void toast.error('请输入原文')
+    if (original.trim().length < 30) return void toast.error('原文至少 30 字')
+    setL3Loading(true); setL3Points([]); setL3Step('idle')
+    try {
+      const resp = await fetch('/api/ai/rewrite/extract-points', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ original: original.trim() }),
+      })
+      if (!resp.ok) {
+        const text = await resp.text()
+        let msg = '提取失败'
+        try { msg = JSON.parse(text).error || msg } catch {}
+        throw new Error(msg)
+      }
+      const json = await resp.json() as { data: { points: string[]; suggestedStructure: string } }
+      setL3Points(json.data.points)
+      setL3Structure(json.data.suggestedStructure || 'story-lead')
+      setL3Step('points')
+      toast.success(`提取到 ${json.data.points.length} 个核心要点`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '提取要点失败')
+    } finally { setL3Loading(false) }
+  }
+
+  function removePoint(index: number) {
+    setL3Points(prev => prev.filter((_, i) => i !== index))
+  }
+
+  async function writeFromPoints() {
+    if (l3Points.length === 0) return
+    setOutput(''); setStreaming(true); setStage('rewriting'); setProgress(0.1)
+    setL3Step('writing')
+    try {
+      await readStream('/api/ai/rewrite/from-points', {
+        points: l3Points,
+        structure: l3Structure,
+        word_count: Math.max(800, Math.min(original.trim().length, 3000)),
+        keywords: keywords.trim() || undefined,
+      }, chunk => {
+        setOutput(p => p + chunk)
+        if (outputRef.current) outputRef.current.scrollTop = outputRef.current.scrollHeight
+      }, token || undefined, (event: StreamEvent) => {
+        if (event.done) setStage('done')
+      })
+      toast.success('深度改写完成')
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        toast.error(err instanceof Error ? err.message : '生成失败')
+      }
+    } finally { setStreaming(false); setStage('done') }
+  }
+
   const isDedup = intent === 'dedup'
   const simColor = similarity === null ? '' :
     similarity < 5 ? 'text-emerald-400' :
@@ -216,6 +281,12 @@ export default function RewritePage() {
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/15 text-red-400 text-sm hover:bg-red-500/25 transition-all">
                 <Square size={13} />停止
               </button>
+            ) : isL3Mode ? (
+              <button onClick={extractPointsFromOriginal} disabled={!original.trim() || l3Loading}
+                className="btn-primary text-sm py-2 px-4">
+                {l3Loading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                {l3Loading ? '提取中...' : '提取要点 → 深度改写'}
+              </button>
             ) : (
               <button onClick={rewrite} disabled={!original.trim()}
                 className="btn-primary text-sm py-2 px-4">
@@ -296,6 +367,42 @@ export default function RewritePage() {
 
           {/* 输出内容区 */}
           <div ref={outputRef} className="flex-1 overflow-y-auto p-4 min-h-72">
+            {/* L3 要点列表（Step 1 完成后显示） */}
+            {l3Step === 'points' && !output && (
+              <div className="space-y-4 animate-fade-in">
+                <div className="flex items-center gap-2 text-sm text-slate-300 font-medium">
+                  <Sparkles size={15} className="text-teal-400" />
+                  <span>核心要点提取完成</span>
+                  <span className="text-[10px] text-slate-500 bg-dark-400 px-2 py-0.5 rounded-full">
+                    {l3Points.length} 个
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500">可删除不需要的要点，确认后将基于这些要点生成全新文章</p>
+                <div className="space-y-2">
+                  {l3Points.map((point, i) => (
+                    <div key={i} className="flex items-start gap-2 group">
+                      <span className="shrink-0 w-5 h-5 rounded-md bg-teal-500/10 text-teal-400 text-[10px] flex items-center justify-center font-medium mt-0.5">
+                        {i + 1}
+                      </span>
+                      <span className="flex-1 text-sm text-slate-300 leading-relaxed">{point}</span>
+                      <button onClick={() => removePoint(i)}
+                        className="shrink-0 opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all text-xs p-1">
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="pt-2 flex gap-2">
+                  <button onClick={writeFromPoints} disabled={l3Points.length === 0}
+                    className="btn-primary text-sm py-2 px-4">
+                    <ArrowLeftRight size={14} />基于要点重写文章
+                  </button>
+                  <button onClick={() => { setL3Step('idle'); setL3Points([]) }}
+                    className="btn-ghost text-xs">取消</button>
+                </div>
+              </div>
+            )}
+
             {output ? (
               <div className={cn(
                 'article-content text-sm leading-relaxed whitespace-pre-wrap break-words',
@@ -303,7 +410,7 @@ export default function RewritePage() {
               )}>
                 {output}
               </div>
-            ) : (
+            ) : l3Step !== 'points' && (
               <div className="h-full flex flex-col items-center justify-center gap-4 text-center px-8">
                 <div className="relative w-16 h-16">
                   <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-teal-500/10 to-brand-500/5 rotate-6" />
@@ -313,7 +420,9 @@ export default function RewritePage() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm text-slate-400 font-medium">仿写结果将在这里呈现</p>
-                  <p className="text-xs text-slate-600">粘贴原文 → 选择参数 → 点击开始</p>
+                  <p className="text-xs text-slate-600">
+                    {isL3Mode ? '提取要点 → 确认 → 生成全新文章' : '粘贴原文 → 选择参数 → 点击开始'}
+                  </p>
                 </div>
               </div>
             )}

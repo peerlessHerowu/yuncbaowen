@@ -4,6 +4,7 @@ import { aiLimiter } from '../middleware/rateLimit'
 import {
   generateTitles, analyzeStyle, generateArticle,
   rewriteArticle, generatePlatforms, deaiProcess, detectContent,
+  extractPoints, rewriteFromPoints,
 } from '../services/ai/tasks'
 import { execute } from '../db/connection'
 
@@ -132,6 +133,54 @@ aiRouter.post('/rewrite', async (req: Request, res: Response, next: NextFunction
       [req.user!.id, 'rewrite', '二次仿写', full, JSON.stringify(meta)]
     )
     res.write(`data: ${JSON.stringify({ done: true, ...meta })}\n\n`)
+    res.end()
+  } catch (err) { next(err) }
+})
+
+// L3 信息重组 - Step 1: 提取核心要点
+aiRouter.post('/rewrite/extract-points', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!checkLen(req.body.original, LIMITS.CONTENT, 'original', res)) return
+
+    const result = await extractPoints(req.user!.id, req.body.original)
+    res.json({ success: true, data: result })
+  } catch (err) { next(err) }
+})
+
+// L3 信息重组 - Step 2: 基于要点生成新文章（SSE）
+aiRouter.post('/rewrite/from-points', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { points, structure, word_count, keywords } = req.body
+    if (!Array.isArray(points) || points.length === 0) {
+      return void res.status(400).json({ success: false, error: '请提供至少一个核心要点' })
+    }
+    if (points.length > 15) {
+      return void res.status(400).json({ success: false, error: '要点数量不能超过 15 个' })
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Connection', 'keep-alive')
+    res.flushHeaders()
+
+    let full = ''
+    const { provider } = await rewriteFromPoints(
+      req.user!.id,
+      points,
+      structure || 'story-lead',
+      word_count || 1500,
+      keywords,
+      chunk => {
+        full += chunk
+        res.write(`data: ${JSON.stringify({ chunk })}\n\n`)
+      }
+    )
+
+    await execute(
+      'INSERT INTO creations (user_id,type,title,content,meta) VALUES (?,?,?,?,?)',
+      [req.user!.id, 'rewrite', '深度改写（信息重组）', full, JSON.stringify({ provider, mode: 'l3' })]
+    )
+    res.write(`data: ${JSON.stringify({ done: true, provider })}\n\n`)
     res.end()
   } catch (err) { next(err) }
 })
