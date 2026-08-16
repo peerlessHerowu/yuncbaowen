@@ -121,7 +121,7 @@ export default function RewritePage() {
   const [l3Loading, setL3Loading] = useState(false)
   const [l3Step, setL3Step] = useState<'idle' | 'points' | 'writing'>('idle')
 
-  const isL3Mode = intensity === 'heavy' && intent === 'dedup'
+  const isL3Mode = intensity === 'heavy' && intent === 'dedup' && !original.trim().startsWith('http')
 
   async function extractPointsFromOriginal() {
     if (!original.trim()) return void toast.error('请输入原文')
