@@ -36,7 +36,7 @@ export default function RewritePage() {
   const [original,  setOriginal]  = useState('')
   const [output,    setOutput]    = useState('')
   const [intensity, setIntensity] = useState<Intensity>('medium')
-  const [intent,    setIntent]    = useState<Intent | null>(null)
+  const [intent,    setIntent]    = useState<Intent | null>('dedup')
   const [keywords,  setKeywords]  = useState('')
   const [streaming, setStreaming] = useState(false)
   const [copied,    setCopied]    = useState(false)
