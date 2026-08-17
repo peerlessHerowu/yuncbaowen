@@ -43,6 +43,7 @@ export async function readStream(
   const reader  = resp.body.getReader()
   const decoder = new TextDecoder()
   let finalEvent: StreamEvent | undefined
+  let gotDone = false
 
   while (true) {
     const { done, value } = await reader.read()
@@ -56,13 +57,24 @@ export async function readStream(
         const json = JSON.parse(data) as StreamEvent
         if (json.chunk) onChunk(json.chunk)
         if (json.stage || json.progress !== undefined) onEvent?.(json)
+        if (json.error) {
+          throw new Error(json.error as string)
+        }
         if (json.done) {
           finalEvent = json
+          gotDone = true
           onEvent?.(json)
           return finalEvent
         }
-      } catch { /* 忽略解析错误 */ }
+      } catch (parseErr) {
+        if (parseErr instanceof Error && parseErr.message !== 'Unexpected token') throw parseErr
+      }
     }
+  }
+
+  // 流关闭但没收到 done:true — 服务端异常中断（如 Caddy response_header_timeout）
+  if (!gotDone) {
+    throw new Error('AI 服务响应超时，请再试一次')
   }
   return finalEvent
 }

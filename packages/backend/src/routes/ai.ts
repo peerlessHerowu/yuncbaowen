@@ -96,6 +96,8 @@ aiRouter.post('/generate', async (req: Request, res: Response, next: NextFunctio
 
 // 二次仿写（SSE）
 aiRouter.post('/rewrite', async (req: Request, res: Response, next: NextFunction) => {
+  // SSE 连接建立后不能再走 next(err)，必须自己处理错误
+  let sseStarted = false
   try {
     if (!checkLen(req.body.original, LIMITS.CONTENT, 'original', res)) return
 
@@ -103,6 +105,7 @@ aiRouter.post('/rewrite', async (req: Request, res: Response, next: NextFunction
     res.setHeader('Cache-Control', 'no-cache')
     res.setHeader('Connection', 'keep-alive')
     res.flushHeaders()
+    sseStarted = true
 
     let full = ''
     const result = await rewriteArticle(
@@ -117,24 +120,30 @@ aiRouter.post('/rewrite', async (req: Request, res: Response, next: NextFunction
       }
     )
 
-    // 如果降重管道做了修补，替换完整内容
-    if (result.similarity !== undefined) {
-      // 管道已经通过 onChunk 流式输出了改写内容
-      // 但修补后的最终内容可能不同，需要通知前端
-      // 通过 done 事件携带最终相似度
-    }
-
     const meta: Record<string, unknown> = { provider: result.provider }
     if (result.similarity !== undefined) meta.similarity = result.similarity
     if (result.fixCount !== undefined) meta.fixCount = result.fixCount
 
-    await execute(
-      'INSERT INTO creations (user_id,type,title,content,meta) VALUES (?,?,?,?,?)',
-      [req.user!.id, 'rewrite', '二次仿写', full, JSON.stringify(meta)]
-    )
+    if (full.trim()) {
+      await execute(
+        'INSERT INTO creations (user_id,type,title,content,meta) VALUES (?,?,?,?,?)',
+        [req.user!.id, 'rewrite', '二次仿写', full, JSON.stringify(meta)]
+      )
+    }
     res.write(`data: ${JSON.stringify({ done: true, ...meta })}\n\n`)
     res.end()
-  } catch (err) { next(err) }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : '仿写失败，请重试'
+    if (sseStarted) {
+      // SSE 已开始，通过事件通知前端
+      try {
+        res.write(`data: ${JSON.stringify({ error: msg, done: true })}\n\n`)
+        res.end()
+      } catch { /* 连接已断开 */ }
+    } else {
+      next(err)
+    }
+  }
 })
 
 // L3 信息重组 - Step 1: 提取核心要点

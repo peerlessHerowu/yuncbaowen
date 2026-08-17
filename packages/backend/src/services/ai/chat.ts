@@ -41,7 +41,8 @@ async function callProvider(
   })
 
   const url = provider.baseURL + provider.chatPath
-  const resp = await fetch(url, { method: 'POST', headers, body, signal: AbortSignal.timeout(180000) })
+  // 同理，不设 AbortSignal，让 Gateway retry 自然完成
+  const resp = await fetch(url, { method: 'POST', headers, body })
 
   if (!resp.ok) {
     const text = await resp.text()
@@ -143,7 +144,9 @@ async function streamFromProvider(
 
   const resp = await fetch(provider.baseURL + provider.chatPath, {
     method: 'POST', headers, body,
-    signal: AbortSignal.timeout(180000),
+    // 不设置 AbortSignal，让 Gateway 自己的 retry 机制处理超时和重连
+    // Gateway 配置：FIRST_TOKEN_TIMEOUT=15s, MAX_RETRIES=3, STREAMING_READ_TIMEOUT=300s
+    // 外层由 Caddy 的 response_header_timeout=90s 兜底（防止完全无响应）
   })
   if (!resp.ok || !resp.body) {
     const text = await resp.text()

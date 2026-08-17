@@ -93,7 +93,14 @@ export default function RewritePage() {
       toast.success('仿写完成，已保存到创作历史')
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
-        toast.error(err instanceof Error ? err.message : '仿写失败')
+        const msg = err instanceof Error ? err.message : '仿写失败'
+        const isTimeout = msg.includes('超时') || msg.includes('timeout')
+        toast.error(
+          isTimeout
+            ? `${msg}（AI 服务网络波动，点「重新生成」再试）`
+            : msg,
+          { duration: 5000 }
+        )
       }
       setStage('idle')
     } finally { setStreaming(false) }
@@ -455,16 +462,23 @@ export default function RewritePage() {
           </div>
 
           {/* 底部操作栏 */}
-          {output && !streaming && (
+          {(output || stage === 'idle') && !streaming && (
             <div className="border-t border-dark-500 px-4 py-2.5 flex items-center gap-2 shrink-0">
-              <button onClick={regenerate}
-                className="btn-ghost text-xs py-1.5 px-2.5">
-                <RefreshCw size={12} />重新生成
-              </button>
-              <div className="w-px h-4 bg-dark-500" />
-              <a href="/deai" className="btn-secondary text-xs py-1.5 px-3">🧬 去AI味</a>
-              <a href="/detect" className="btn-secondary text-xs py-1.5 px-3">🔍 检测</a>
-              <a href="/layout" className="btn-secondary text-xs py-1.5 px-3">📱 排版</a>
+              {output ? (
+                <>
+                  <button onClick={regenerate} className="btn-ghost text-xs py-1.5 px-2.5">
+                    <RefreshCw size={12} />重新生成
+                  </button>
+                  <div className="w-px h-4 bg-dark-500" />
+                  <a href="/deai" className="btn-secondary text-xs py-1.5 px-3">🧬 去AI味</a>
+                  <a href="/detect" className="btn-secondary text-xs py-1.5 px-3">🔍 检测</a>
+                  <a href="/layout" className="btn-secondary text-xs py-1.5 px-3">📱 排版</a>
+                </>
+              ) : original.trim() && stage === 'idle' ? (
+                <button onClick={rewrite} className="btn-ghost text-xs py-1.5 px-2.5">
+                  <RefreshCw size={12} />重新生成
+                </button>
+              ) : null}
             </div>
           )}
         </div>
