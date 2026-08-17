@@ -64,6 +64,20 @@ CREATE TABLE IF NOT EXISTS creations (
   INDEX idx_user_created (user_id, created_at)
 ) ENGINE=InnoDB;
 
+-- 改写任务（支持断点续传）
+CREATE TABLE IF NOT EXISTS rewrite_tasks (
+  id           VARCHAR(36)  NOT NULL PRIMARY KEY,
+  user_id      INT UNSIGNED NOT NULL,
+  original_url VARCHAR(2048),
+  original_text LONGTEXT     NOT NULL,
+  segments     JSON         NOT NULL,
+  status       ENUM('running','partial','done','failed') NOT NULL DEFAULT 'running',
+  meta         JSON,
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_user_status (user_id, status)
+) ENGINE=InnoDB;
+
 -- 知识库文档
 CREATE TABLE IF NOT EXISTS knowledge_docs (
   id           INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

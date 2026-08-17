@@ -123,6 +123,7 @@ aiRouter.post('/rewrite', async (req: Request, res: Response, next: NextFunction
     const meta: Record<string, unknown> = { provider: result.provider }
     if (result.similarity !== undefined) meta.similarity = result.similarity
     if (result.fixCount !== undefined) meta.fixCount = result.fixCount
+    if (result.taskId) meta.taskId = result.taskId
 
     if (full.trim()) {
       await execute(
@@ -144,6 +145,20 @@ aiRouter.post('/rewrite', async (req: Request, res: Response, next: NextFunction
       next(err)
     }
   }
+})
+
+// 草稿保存（手动编辑后保存）
+aiRouter.post('/rewrite/draft', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { content, original } = req.body
+    if (!content?.trim()) return void res.status(400).json({ success: false, error: '内容不能为空' })
+    await execute(
+      'INSERT INTO creations (user_id,type,title,content,meta) VALUES (?,?,?,?,?)',
+      [req.user!.id, 'rewrite', '手动草稿', content,
+       JSON.stringify({ isDraft: true, original: (original || '').slice(0, 200) })]
+    )
+    res.json({ success: true })
+  } catch (err) { next(err) }
 })
 
 // L3 信息重组 - Step 1: 提取核心要点

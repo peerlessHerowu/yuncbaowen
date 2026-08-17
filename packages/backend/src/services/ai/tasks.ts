@@ -210,6 +210,7 @@ export interface RewriteResult {
   provider: string
   similarity?: number
   fixCount?: number
+  taskId?: string
 }
 
 export async function rewriteArticle(
@@ -220,7 +221,9 @@ export async function rewriteArticle(
 ): Promise<RewriteResult> {
   // 支持粘贴 URL 自动抓取正文
   let original = req.original.trim()
+  let originalUrl: string | undefined
   if (/^https?:\/\//i.test(original)) {
+    originalUrl = original
     const { success, failed } = await fetchArticles([original])
     if (success.length > 0) original = success[0].content.slice(0, 12000)
     else throw new Error(`链接抓取失败：${failed[0]?.error}，请粘贴正文`)
@@ -233,15 +236,17 @@ export async function rewriteArticle(
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 
-  // 降重意图 → 走专用降重管道
+  // 降重意图 → 走专用降重管道（支持断点续传）
   if (req.intent === 'dedup') {
     const { runDedupPipeline } = await import('./rewrite-pipeline')
     const result = await runDedupPipeline({
       userId,
       original,
+      originalUrl,
       intensity: req.intensity ?? 'medium',
       intent: 'dedup',
       keywords: req.keywords,
+      taskId: req.taskId,   // 有 taskId 则续传
       onChunk,
       onStage: onStage || (() => {}),
     })
@@ -249,6 +254,7 @@ export async function rewriteArticle(
       provider: result.provider,
       similarity: result.similarity,
       fixCount: result.fixCount,
+      taskId: result.taskId,
     }
   }
 

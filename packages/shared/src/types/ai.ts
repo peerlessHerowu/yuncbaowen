@@ -34,8 +34,10 @@ export interface GenerateRequest {
 export interface RewriteRequest {
   original: string
   intensity?: 'light' | 'medium' | 'heavy'
-  intent?: 'dedup' | 'platform' | 'casual' | 'fun'  // 改写意图
-  keywords?: string  // 必须保留的关键词（逗号分隔）
+  intent?: 'dedup' | 'platform' | 'casual' | 'fun'
+  keywords?: string
+  taskId?: string        // 传入已有 taskId 则断点续传
+  originalUrl?: string   // 如果来自 URL 抓取，记录原始链接
 }
 
 export interface PlatformRequest {

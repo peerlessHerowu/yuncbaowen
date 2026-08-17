@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import type React from 'react'
 import { RefreshCw, Loader2, Copy, Check, ArrowLeftRight, Square, Shield, Sparkles, Info } from 'lucide-react'
 import { readStream, type StreamEvent } from '../../utils/stream'
@@ -34,8 +35,12 @@ const STAGE_LABELS: Record<Stage, string> = {
 
 export default function RewritePage() {
   const token     = useAuthStore(s => s.token)
+  const location  = useLocation()
   const [original,  setOriginal]  = useState('')
-  const [output,    setOutput]    = useState('')
+  const [output,    setOutput]    = useState(() => {
+    // 从历史「继续处理」跳转过来时，预填内容到输出框
+    return (location.state as {content?: string})?.content || ''
+  })
   const [intensity, setIntensity] = useState<Intensity>('medium')
   const [intent,    setIntent]    = useState<Intent | null>('dedup')
   const [keywords,  setKeywords]  = useState('')
@@ -45,6 +50,7 @@ export default function RewritePage() {
   const [progress,  setProgress]  = useState(0)
   const [similarity, setSimilarity] = useState<number | null>(null)
   const [fixCount,  setFixCount]  = useState(0)
+  const [taskId,    setTaskId]    = useState<string | null>(null)  // 断点续传用
   const abortRef = useRef<AbortController>()
   const outputRef = useRef<HTMLDivElement>(null)
 
@@ -64,11 +70,15 @@ export default function RewritePage() {
     requestAnimationFrame(tick)
   }, [similarity])
 
-  async function rewrite() {
+  async function rewrite(resumeTaskId?: string) {
     if (!original.trim()) return void toast.error('请输入原文或粘贴公众号链接')
     if (original.trim().length < 30) return void toast.error('原文至少 30 字')
-    setOutput(''); setStreaming(true); setStage('rewriting'); setProgress(0.05)
-    setSimilarity(null); setFixCount(0)
+
+    // 续传时保留已有输出，重跑从头清空
+    if (!resumeTaskId) setOutput('')
+    setStreaming(true); setStage('rewriting'); setProgress(0.05)
+    if (!resumeTaskId) { setSimilarity(null); setFixCount(0) }
+
     abortRef.current = new AbortController()
     try {
       const finalEvent = await readStream('/api/ai/rewrite', {
@@ -76,29 +86,35 @@ export default function RewritePage() {
         intensity,
         intent: intent || undefined,
         keywords: keywords.trim() || undefined,
+        taskId: resumeTaskId || undefined,   // 续传时传入 taskId
       }, chunk => {
-        setOutput(p => p + chunk)
+        if (resumeTaskId) {
+          // 续传：直接替换输出（管道会把已完成段重新流出）
+          setOutput(p => p + chunk)
+        } else {
+          setOutput(p => p + chunk)
+        }
         if (outputRef.current) outputRef.current.scrollTop = outputRef.current.scrollHeight
       }, token || undefined, (event: StreamEvent) => {
         if (event.stage) setStage(event.stage as Stage)
         if (event.progress !== undefined) setProgress(event.progress)
         if (event.similarity !== undefined) setSimilarity(event.similarity)
         if (event.fixCount !== undefined) setFixCount(event.fixCount as number)
-        if (event.done) setStage('done')
+        if (event.taskId) setTaskId(event.taskId as string)
+        if (event.done) {
+          setStage('done')
+          if (event.taskId) setTaskId(event.taskId as string)
+        }
       })
-      // 如果有最终相似度信息
-      if (finalEvent?.similarity !== undefined) {
-        setSimilarity(finalEvent.similarity)
-      }
+      if (finalEvent?.similarity !== undefined) setSimilarity(finalEvent.similarity)
+      if (finalEvent?.taskId) setTaskId(finalEvent.taskId as string)
       toast.success('仿写完成，已保存到创作历史')
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
         const msg = err instanceof Error ? err.message : '仿写失败'
         const isTimeout = msg.includes('超时') || msg.includes('timeout')
         toast.error(
-          isTimeout
-            ? `${msg}（AI 服务网络波动，点「重新生成」再试）`
-            : msg,
+          isTimeout ? `${msg}（点「断点续传」继续）` : msg,
           { duration: 5000 }
         )
       }
@@ -109,18 +125,56 @@ export default function RewritePage() {
   function stop() {
     abortRef.current?.abort()
     setStreaming(false); setStage('idle')
-    toast('已停止生成', { icon: '⏹️' })
+    toast('已停止。如需继续，点「断点续传」', { icon: '⏹️' })
   }
 
   function regenerate() {
     setOutput(''); setSimilarity(null); setFixCount(0); setStage('idle')
+    setTaskId(null)
     rewrite()
+  }
+
+  function resume() {
+    if (!taskId) return rewrite()
+    setOutput('')  // 清空后从已保存段重新流出
+    rewrite(taskId)
   }
 
   async function copy() {
     await navigator.clipboard.writeText(output)
-    setCopied(true); toast.success('已复制')
+    setCopied(true); toast.success('已复制（纯文本，图片链接已保留）')
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  async function copyMarkdown() {
+    // 复制 Markdown 格式（含图片语法）
+    await navigator.clipboard.writeText(output)
+    toast.success('已复制 Markdown 格式')
+  }
+
+  async function copyPlain() {
+    // 去除图片 markdown 语法，只保留文字
+    const plain = output.replace(/!\[([^\]]*)\]\([^)]+\)/g, (_, alt) => alt ? `[${alt}]` : '')
+    await navigator.clipboard.writeText(plain)
+    toast.success('已复制纯文本（图片已去除）')
+  }
+
+  async function saveDraft() {
+    if (!output.trim()) return
+    try {
+      const resp = await fetch('/api/ai/rewrite/draft', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ content: output, original: original.trim() }),
+      })
+      if (!resp.ok) throw new Error('保存失败')
+      toast.success('草稿已保存到创作历史')
+    } catch {
+      toast.error('保存失败，请重试')
+    }
   }
 
   // ─── L3 信息重组模式 ───────────────────────────────────
@@ -321,7 +375,7 @@ export default function RewritePage() {
                 {l3Loading ? '提取中...' : '提取要点 → 深度改写'}
               </button>
             ) : (
-              <button onClick={rewrite} disabled={!original.trim()}
+              <button onClick={() => rewrite()} disabled={!original.trim()}
                 className="btn-primary text-sm py-2 px-4">
                 <ArrowLeftRight size={14} />开始仿写
               </button>
@@ -348,12 +402,14 @@ export default function RewritePage() {
             <div className="flex items-center gap-2">
               <span className="text-xs text-slate-500">{output.trim().length} 字</span>
               {output && !streaming && (
-                <button onClick={copy}
-                  className={cn('flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all',
-                    copied ? 'text-emerald-400 bg-emerald-500/10' : 'text-slate-400 hover:text-slate-200 hover:bg-dark-400'
-                  )}>
-                  {copied ? <><Check size={11} />已复制</> : <><Copy size={11} />复制</>}
-                </button>
+                <div className="flex items-center gap-1">
+                  <button onClick={copy}
+                    className={cn('flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all',
+                      copied ? 'text-emerald-400 bg-emerald-500/10' : 'text-slate-400 hover:text-slate-200 hover:bg-dark-400'
+                    )}>
+                    {copied ? <><Check size={11} />已复制</> : <><Copy size={11} />复制</>}
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -463,19 +519,57 @@ export default function RewritePage() {
 
           {/* 底部操作栏 */}
           {(output || stage === 'idle') && !streaming && (
-            <div className="border-t border-dark-500 px-4 py-2.5 flex items-center gap-2 shrink-0">
+            <div className="border-t border-dark-500 px-4 py-2.5 flex items-center gap-2 shrink-0 flex-wrap">
               {output ? (
                 <>
+                  {/* 主操作 */}
                   <button onClick={regenerate} className="btn-ghost text-xs py-1.5 px-2.5">
                     <RefreshCw size={12} />重新生成
                   </button>
+                  {taskId && (
+                    <button onClick={resume}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all">
+                      ⚡ 断点续传
+                    </button>
+                  )}
+                  <button onClick={saveDraft} className="btn-ghost text-xs py-1.5 px-2.5">
+                    💾 保存草稿
+                  </button>
+
                   <div className="w-px h-4 bg-dark-500" />
+
+                  {/* 复制 */}
+                  <div className="relative group">
+                    <button className="btn-ghost text-xs py-1.5 px-2.5">
+                      <Copy size={12} />复制 ▾
+                    </button>
+                    <div className="absolute bottom-full left-0 mb-1 hidden group-hover:flex flex-col bg-dark-200 border border-dark-500 rounded-xl overflow-hidden shadow-lg z-10 w-36">
+                      <button onClick={copy} className="px-3 py-2 text-left text-xs text-slate-300 hover:bg-dark-400">
+                        📝 含图片链接
+                      </button>
+                      <button onClick={copyPlain} className="px-3 py-2 text-left text-xs text-slate-300 hover:bg-dark-400">
+                        📄 纯文字
+                      </button>
+                      <button onClick={copyMarkdown} className="px-3 py-2 text-left text-xs text-slate-300 hover:bg-dark-400">
+                        🔗 Markdown
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="w-px h-4 bg-dark-500" />
+
+                  {/* 后续处理 */}
                   <a href="/deai" className="btn-secondary text-xs py-1.5 px-3">🧬 去AI味</a>
                   <a href="/detect" className="btn-secondary text-xs py-1.5 px-3">🔍 检测</a>
                   <a href="/layout" className="btn-secondary text-xs py-1.5 px-3">📱 排版</a>
                 </>
+              ) : original.trim() && stage === 'idle' && taskId ? (
+                <button onClick={resume}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all">
+                  ⚡ 断点续传（上次中断，点击继续）
+                </button>
               ) : original.trim() && stage === 'idle' ? (
-                <button onClick={rewrite} className="btn-ghost text-xs py-1.5 px-2.5">
+                <button onClick={() => rewrite()} className="btn-ghost text-xs py-1.5 px-2.5">
                   <RefreshCw size={12} />重新生成
                 </button>
               ) : null}

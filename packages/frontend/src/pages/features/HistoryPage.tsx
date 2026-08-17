@@ -1,12 +1,39 @@
 import { useState, useEffect, useCallback } from 'react'
-import { History, Search, Trash2, Loader2, ChevronRight, X } from 'lucide-react'
+import type React from 'react'
+import { useNavigate } from 'react-router-dom'
+import { History, Search, Trash2, Loader2, ChevronRight, X, Copy, Check } from 'lucide-react'
 import { creationApi } from '../../api'
 import toast from 'react-hot-toast'
 import { cn } from '../../utils/cn'
 
+/** 将文本中的 ![alt](url) 渲染为 img 标签，其余保持段落格式 */
+function renderContentWithImages(text: string): React.ReactNode[] {
+  const imgRe = /!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g
+  const nodes: React.ReactNode[] = []
+  let last = 0, key = 0, m: RegExpExecArray | null
+  while ((m = imgRe.exec(text)) !== null) {
+    if (m.index > last) {
+      nodes.push(<span key={key++} className="whitespace-pre-wrap break-words">{text.slice(last, m.index)}</span>)
+    }
+    nodes.push(
+      <img key={key++} src={m[2]} alt={m[1] || '图片'}
+        className="max-w-full rounded-lg my-2 block"
+        loading="lazy"
+        onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+      />
+    )
+    last = m.index + m[0].length
+  }
+  if (last < text.length) {
+    nodes.push(<span key={key++} className="whitespace-pre-wrap break-words">{text.slice(last)}</span>)
+  }
+  return nodes
+}
+
 interface Creation {
   id: number; type: string; title: string;
   content: string; ai_score: number | null; created_at: string
+  meta?: string
 }
 
 const TYPE_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
@@ -23,6 +50,7 @@ const SEND_TO: Record<string, string> = {
 }
 
 export default function HistoryPage() {
+  const navigate = useNavigate()
   const [items,    setItems]    = useState<Creation[]>([])
   const [total,    setTotal]    = useState(0)
   const [page,     setPage]     = useState(1)
@@ -30,6 +58,7 @@ export default function HistoryPage() {
   const [keyword,  setKeyword]  = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
   const [selected, setSelected] = useState<Creation | null>(null)
+  const [copiedId, setCopiedId] = useState<number | null>(null)
 
   const PAGE_SIZE = 20
 
@@ -56,8 +85,19 @@ export default function HistoryPage() {
   function sendTo(item: Creation) {
     const path = SEND_TO[item.type]
     if (!path) return void toast('暂不支持跳转到此类型', { icon: 'ℹ️' })
-    // 简单跳转（真实场景可用 navigate + state 传递内容）
-    window.location.href = path
+    // 通过 state 把内容传给目标页面
+    navigate(path, { state: { content: item.content } })
+    toast.success('已跳转，内容已填入')
+  }
+
+  async function copyContent(item: Creation) {
+    const text = typeof item.content === 'string' && item.content.startsWith('[')
+      ? JSON.parse(item.content).map((t: {text: string}, i: number) => `${i+1}. ${t.text}`).join('\n')
+      : item.content
+    await navigator.clipboard.writeText(text)
+    setCopiedId(item.id)
+    toast.success('已复制')
+    setTimeout(() => setCopiedId(null), 2000)
   }
 
   return (
@@ -149,9 +189,16 @@ export default function HistoryPage() {
                   <span className={cn('badge text-xs', TYPE_CONFIG[selected.type]?.color || 'bg-dark-400 text-slate-400')}>
                     {TYPE_CONFIG[selected.type]?.label || selected.type}
                   </span>
+                  {(() => { try { return JSON.parse(selected.meta || '{}').isDraft } catch { return false } })() && (
+                    <span className="badge text-xs bg-amber-500/15 text-amber-400">草稿</span>
+                  )}
                   <span className="text-sm font-medium text-slate-200 truncate max-w-xs">{selected.title}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
+                  <button onClick={() => copyContent(selected)}
+                    className="btn-ghost text-xs py-1.5 px-2.5 flex items-center gap-1">
+                    {copiedId === selected.id ? <><Check size={11} />已复制</> : <><Copy size={11} />复制</>}
+                  </button>
                   {SEND_TO[selected.type] && (
                     <button onClick={() => sendTo(selected)} className="btn-secondary text-xs py-1.5 px-3">
                       继续处理 <ChevronRight size={12} />
@@ -163,14 +210,14 @@ export default function HistoryPage() {
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto p-5">
-                <div className="article-content whitespace-pre-wrap text-sm">
+                <div className="article-content text-sm leading-relaxed">
                   {typeof selected.content === 'string' && selected.content.startsWith('[')
                     ? JSON.parse(selected.content).map((t: {text:string}, i: number) => (
                         <div key={i} className="py-2 border-b border-dark-500 last:border-0">
                           {i+1}. {t.text}
                         </div>
                       ))
-                    : selected.content
+                    : renderContentWithImages(selected.content)
                   }
                 </div>
               </div>
