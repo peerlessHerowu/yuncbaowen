@@ -35,7 +35,7 @@ export async function runDedupPipeline(options: PipelineOptions): Promise<Pipeli
   const { userId, original, intensity, keywords, onChunk, onStage } = options
 
   // ─── Layer 0: 预处理（分段）───────────────────────────
-  const segments = splitText(original, 2000)
+  const segments = splitText(original, 4000)  // 4000字以下不分段，减少串行调用
   const isMultiSegment = segments.length > 1
 
   logger.info(`Dedup pipeline: ${original.length} chars, ${segments.length} segments`)

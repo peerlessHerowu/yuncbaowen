@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import type React from 'react'
 import { RefreshCw, Loader2, Copy, Check, ArrowLeftRight, Square, Shield, Sparkles, Info } from 'lucide-react'
 import { readStream, type StreamEvent } from '../../utils/stream'
 import { useAuthStore } from '../../store/auth'
@@ -187,6 +188,31 @@ export default function RewritePage() {
   const simBg = similarity === null ? '' :
     similarity < 5 ? 'bg-emerald-500/10 border-emerald-500/20' :
     similarity < 10 ? 'bg-amber-500/10 border-amber-500/20' : 'bg-red-500/10 border-red-500/20'
+
+  /** 将文本中的 ![alt](url) 渲染为真实 img 标签，其余文字保持段落格式 */
+  function renderContentWithImages(text: string): React.ReactNode[] {
+    const imgRe = /!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g
+    const nodes: React.ReactNode[] = []
+    let last = 0, key = 0, m: RegExpExecArray | null
+    while ((m = imgRe.exec(text)) !== null) {
+      if (m.index > last) {
+        const chunk = text.slice(last, m.index)
+        nodes.push(<span key={key++} className="whitespace-pre-wrap break-words">{chunk}</span>)
+      }
+      nodes.push(
+        <img key={key++} src={m[2]} alt={m[1] || '图片'}
+          className="max-w-full rounded-lg my-2 block"
+          loading="lazy"
+          onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+        />
+      )
+      last = m.index + m[0].length
+    }
+    if (last < text.length) {
+      nodes.push(<span key={key++} className="whitespace-pre-wrap break-words">{text.slice(last)}</span>)
+    }
+    return nodes
+  }
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -405,10 +431,10 @@ export default function RewritePage() {
 
             {output ? (
               <div className={cn(
-                'article-content text-sm leading-relaxed whitespace-pre-wrap break-words',
+                'article-content text-sm leading-relaxed',
                 streaming && stage === 'rewriting' && 'typing-cursor'
               )}>
-                {output}
+                {renderContentWithImages(output)}
               </div>
             ) : l3Step !== 'points' && (
               <div className="h-full flex flex-col items-center justify-center gap-4 text-center px-8">

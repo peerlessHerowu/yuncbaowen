@@ -8,7 +8,7 @@ export interface FetchedArticle {
   url: string
   title: string
   author: string
-  content: string   // 纯文本正文
+  content: string        // 纯文本正文（含 ![图片](url) 占位符）
   publishedAt?: string
   wordCount: number
   platform: string
@@ -31,14 +31,29 @@ function pickUA(mobile = true): string {
   return pool[Math.floor(Math.random() * pool.length)]
 }
 
-// ── 工具：HTML 转纯文本 ──────────────────────────────────────────
-function htmlToText(html: string): string {
+// ── 工具：HTML 转纯文本（保留图片占位符）────────────────────────
+/**
+ * HTML 转纯文本，将 <img> 标签转为 ![alt](url) 格式保留图片位置
+ * 支持 src 和 data-src（懒加载）属性
+ */
+function htmlToTextWithImages(html: string): string {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<script[^>]*>[\s\S]*$/gi, '')  // 未闭合的 script（被切片截断）
+    .replace(/<script[^>]*>[\s\S]*$/gi, '')
     .replace(/<style[\s\S]*?<\/style>/gi, '')
     .replace(/<style[^>]*>[\s\S]*$/gi, '')
     .replace(/<noscript[\s\S]*?<\/noscript>/gi, '')
+    // 图片：优先取 data-src（懒加载），其次取 src，转为 Markdown 格式
+    .replace(/<img[^>]+>/gi, (imgTag) => {
+      const dataSrc = imgTag.match(/data-src=["']([^"']+)["']/)
+      const src = imgTag.match(/(?<!\w)src=["']([^"']+)["']/)
+      const alt = imgTag.match(/alt=["']([^"']*)["']/)
+      const url = dataSrc?.[1] || src?.[1] || ''
+      // 过滤掉 base64 占位图 和 空 URL
+      if (!url || url.startsWith('data:')) return ''
+      const altText = alt?.[1] || '图片'
+      return `\n![${altText}](${url})\n`
+    })
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/p>/gi, '\n')
     .replace(/<\/div>/gi, '\n')
@@ -53,10 +68,10 @@ function htmlToText(html: string): string {
     .trim()
 }
 
-/**
- * 二次清理：移除纯文本中残留的代码/脚本片段
- * 处理切片导致 script 标签未闭合而泄漏的 JS 代码
- */
+/** 纯文本转换（不含图片，用于标题/作者提取） */
+function htmlToText(html: string): string {
+  return htmlToTextWithImages(html).replace(/!\[.*?\]\(.*?\)/g, '').replace(/\n{3,}/g, '\n\n').trim()
+}
 function cleanTextContent(text: string): string {
   return text
     // 移除 markdown 代码块（AI 改写时不应出现代码块）
@@ -114,7 +129,7 @@ function parseWeixin(html: string, url: string): FetchedArticle {
       const pos = chunk.indexOf(marker)
       if (pos > 200 && pos < endIdx) endIdx = pos
     }
-    content = htmlToText(chunk.slice(0, endIdx))
+    content = htmlToTextWithImages(chunk.slice(0, endIdx))
       .replace(/^id="js_content"[^>]*>?\s*/, '')
       .trim()
     content = cleanTextContent(content)
@@ -123,7 +138,7 @@ function parseWeixin(html: string, url: string): FetchedArticle {
   // 如果正文还是太短，尝试备用方案
   if (content.length < 50) {
     const altMatch = html.match(/class="rich_media_content[^"]*"[^>]*>([\s\S]{100,}?)<\/div>/)
-    if (altMatch) content = cleanTextContent(htmlToText(altMatch[1]))
+    if (altMatch) content = cleanTextContent(htmlToTextWithImages(altMatch[1]))
   }
 
   return { url, title, author, content, publishedAt, wordCount: content.length, platform: 'weixin' }
@@ -180,13 +195,45 @@ function parseGeneric(html: string, url: string): FetchedArticle {
   return { url, title, author: '', content, wordCount: content.length, platform: 'generic' }
 }
 
+function parseToutiao(html: string, url: string): FetchedArticle {
+  // 标题
+  const titleMatch = html.match(/<title>([\s\S]*?)<\/title>/)
+  const title = titleMatch ? htmlToText(titleMatch[1]).trim().replace(/[-_|–].*$/, '').trim() : '未知标题'
+
+  // 作者
+  const authorMatch = html.match(/class="[^"]*author[^"]*"[^>]*>([\s\S]*?)<\//)
+  const author = authorMatch ? htmlToText(authorMatch[1]).trim() : ''
+
+  // 正文在 <article> 标签内
+  const articleMatch = html.match(/<article[^>]*>([\s\S]*?)<\/article>/)
+  let content = ''
+  if (articleMatch) {
+    content = htmlToTextWithImages(articleMatch[1])
+    content = cleanTextContent(content)
+  }
+
+  // 备用：找 content 容器 div
+  if (content.length < 50) {
+    const divMatch = html.match(/class="[^"]*article-content[^"]*"[^>]*>([\s\S]{200,}?)<\/div>/)
+    if (divMatch) content = cleanTextContent(htmlToTextWithImages(divMatch[1]))
+  }
+
+  return { url, title, author, content, wordCount: content.length, platform: 'toutiao' }
+}
+
 // ── 主函数 ───────────────────────────────────────────────────────
 
 export async function fetchArticle(url: string): Promise<FetchedArticle> {
   const platform = detectPlatform(url)
 
+  // 头条：将 www.toutiao.com/article/ID 重写为 m.toutiao.com/article/ID 以获取 SSR 正文
+  let fetchUrl = url
+  if (platform === 'toutiao' && url.includes('www.toutiao.com')) {
+    fetchUrl = url.replace('www.toutiao.com', 'm.toutiao.com')
+  }
+
   // 公众号用手机 UA，其他用桌面 UA
-  const ua = pickUA(platform === 'weixin')
+  const ua = pickUA(platform === 'weixin' || platform === 'toutiao')
   const headers: Record<string, string> = {
     'User-Agent': ua,
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -194,29 +241,31 @@ export async function fetchArticle(url: string): Promise<FetchedArticle> {
     'Accept-Encoding': 'gzip, deflate, br',
   }
 
-  // 公众号需要 Referer
   if (platform === 'weixin') {
     headers['Referer'] = 'https://mp.weixin.qq.com/'
   }
+  if (platform === 'toutiao') {
+    headers['Referer'] = 'https://m.toutiao.com/'
+  }
 
-  const resp = await fetch(url, {
+  const resp = await fetch(fetchUrl, {
     headers,
     signal: AbortSignal.timeout(15000),
     redirect: 'follow',
   })
 
   if (!resp.ok) {
-    throw new Error(`抓取失败：HTTP ${resp.status}（${url}）`)
+    throw new Error(`抓取失败：HTTP ${resp.status}（${fetchUrl}）`)
   }
 
   const html = await resp.text()
 
-  // 按平台选解析器
   switch (platform) {
-    case 'weixin':  return parseWeixin(html, url)
-    case 'zhihu':   return parseZhihu(html, url)
-    case 'jianshu': return parseJianshu(html, url)
-    default:        return parseGeneric(html, url)
+    case 'weixin':   return parseWeixin(html, url)
+    case 'zhihu':    return parseZhihu(html, url)
+    case 'jianshu':  return parseJianshu(html, url)
+    case 'toutiao':  return parseToutiao(html, url)
+    default:         return parseGeneric(html, url)
   }
 }
 

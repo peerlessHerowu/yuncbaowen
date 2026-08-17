@@ -41,7 +41,7 @@ async function callProvider(
   })
 
   const url = provider.baseURL + provider.chatPath
-  const resp = await fetch(url, { method: 'POST', headers, body, signal: AbortSignal.timeout(120000) })
+  const resp = await fetch(url, { method: 'POST', headers, body, signal: AbortSignal.timeout(180000) })
 
   if (!resp.ok) {
     const text = await resp.text()
@@ -143,7 +143,7 @@ async function streamFromProvider(
 
   const resp = await fetch(provider.baseURL + provider.chatPath, {
     method: 'POST', headers, body,
-    signal: AbortSignal.timeout(120000),
+    signal: AbortSignal.timeout(180000),
   })
   if (!resp.ok || !resp.body) {
     const text = await resp.text()
