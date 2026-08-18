@@ -1,3 +1,7 @@
+import path from 'path'
+import fs from 'fs'
+import { createHash } from 'crypto'
+
 /**
  * 文章内容抓取器
  * 支持：公众号、知乎、简书、头条、掘金等主流中文内容平台
@@ -12,6 +16,47 @@ export interface FetchedArticle {
   publishedAt?: string
   wordCount: number
   platform: string
+}
+
+// ── 图片缓存（解决微信防盗链 + 头条签名过期）────────────────────
+const CACHED_IMGS_DIR = path.resolve(process.env.UPLOAD_DIR || './uploads', 'cached-imgs')
+
+/**
+ * 下载图片到本地缓存目录，返回永久本地 URL。
+ * - 用内容 MD5 hash 命名，相同图片只存一次。
+ * - 失败时静默降级，返回原始 URL（不阻塞主流程）。
+ * - 微信图片需要携带 Referer，头条图片亦同。
+ */
+async function cacheImageUrl(url: string, referer?: string): Promise<string> {
+  try {
+    if (!fs.existsSync(CACHED_IMGS_DIR)) {
+      fs.mkdirSync(CACHED_IMGS_DIR, { recursive: true })
+    }
+
+    const headers: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+    }
+    if (referer) headers['Referer'] = referer
+
+    const resp = await fetch(url, { headers, signal: AbortSignal.timeout(10000) })
+    if (!resp.ok) return url  // 下载失败，降级使用原 URL
+
+    const buffer = Buffer.from(await resp.arrayBuffer())
+    const hash = createHash('md5').update(buffer).digest('hex').slice(0, 16)
+
+    // 根据 Content-Type 决定扩展名
+    const ct = resp.headers.get('content-type') || ''
+    const ext = ct.includes('png') ? 'png' : ct.includes('gif') ? 'gif' : ct.includes('webp') ? 'webp' : 'jpg'
+    const filename = `${hash}.${ext}`
+    const filepath = path.join(CACHED_IMGS_DIR, filename)
+
+    if (!fs.existsSync(filepath)) {
+      fs.writeFileSync(filepath, buffer)
+    }
+    return `/imgs/${filename}`
+  } catch {
+    return url  // 任何错误都降级，不影响主流程
+  }
 }
 
 // ── UA 池（轮换使用，防止被识别为爬虫）─────────────────────────
@@ -35,8 +80,12 @@ function pickUA(mobile = true): string {
 /**
  * HTML 转纯文本，将 <img> 标签转为 ![alt](url) 格式保留图片位置
  * 支持 src 和 data-src（懒加载）属性
+ * alt 去重：同一文章中相同 alt 的图片自动编号（如「配图2」「配图3」），
+ * 避免头条等平台每张图都用文章标题作 alt，污染相似度计算
  */
 function htmlToTextWithImages(html: string): string {
+  const seenAlts = new Map<string, number>()   // alt → 出现次数
+
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<script[^>]*>[\s\S]*$/gi, '')
@@ -51,7 +100,13 @@ function htmlToTextWithImages(html: string): string {
       const url = dataSrc?.[1] || src?.[1] || ''
       // 过滤掉 base64 占位图 和 空 URL
       if (!url || url.startsWith('data:')) return ''
-      const altText = alt?.[1] || '图片'
+
+      let rawAlt = (alt?.[1] || '图片').trim()
+      // alt 去重：第一次出现用原始 alt，之后编号
+      const count = seenAlts.get(rawAlt) ?? 0
+      seenAlts.set(rawAlt, count + 1)
+      const altText = count === 0 ? rawAlt : `配图${count + 1}`
+
       return `\n![${altText}](${url})\n`
     })
     .replace(/<br\s*\/?>/gi, '\n')
@@ -260,13 +315,34 @@ export async function fetchArticle(url: string): Promise<FetchedArticle> {
 
   const html = await resp.text()
 
+  let article: FetchedArticle
   switch (platform) {
-    case 'weixin':   return parseWeixin(html, url)
-    case 'zhihu':    return parseZhihu(html, url)
-    case 'jianshu':  return parseJianshu(html, url)
-    case 'toutiao':  return parseToutiao(html, url)
-    default:         return parseGeneric(html, url)
+    case 'weixin':   article = parseWeixin(html, url); break
+    case 'zhihu':    article = parseZhihu(html, url); break
+    case 'jianshu':  article = parseJianshu(html, url); break
+    case 'toutiao':  article = parseToutiao(html, url); break
+    default:         article = parseGeneric(html, url); break
   }
+
+  // 异步缓存所有图片（解决微信防盗链 + 头条签名过期）
+  // 并行下载，失败静默降级，不阻塞主流程
+  const imgRe = /!\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g
+  const imgMatches = [...article.content.matchAll(imgRe)]
+  if (imgMatches.length > 0) {
+    const referer = platform === 'weixin' ? 'https://mp.weixin.qq.com/' :
+                    platform === 'toutiao' ? 'https://m.toutiao.com/' : undefined
+    const replacements = await Promise.all(
+      imgMatches.map(async (m) => ({
+        original: m[0],
+        cached: `![${m[1]}](${await cacheImageUrl(m[2], referer)})`,
+      }))
+    )
+    for (const { original, cached } of replacements) {
+      article.content = article.content.replace(original, cached)
+    }
+  }
+
+  return article
 }
 
 /**

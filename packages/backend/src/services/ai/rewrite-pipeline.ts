@@ -17,6 +17,79 @@ import { detectConsecutiveMatches, estimateSimilarity, fixConsecutiveMatches } f
 import { randomizeText } from './randomizer'
 import { logger } from '../../utils/logger'
 
+// ── 图片提取 / 插回工具 ───────────────────────────────────────────
+
+interface ImagePosition {
+  afterParagraphIndex: number  // 在第 N 段纯文字后面
+  markdown: string             // 完整的 ![alt](url)
+}
+
+/**
+ * 把图片从内容中摘出，只把纯文字给 LLM 改写
+ * 返回纯文字内容 + 图片位置映射
+ */
+function extractImages(content: string): { textOnly: string; images: ImagePosition[] } {
+  const paragraphs = content.split(/\n\n+/)
+  const images: ImagePosition[] = []
+  const textParagraphs: string[] = []
+
+  for (const para of paragraphs) {
+    const trimmed = para.trim()
+    if (/^!\[/.test(trimmed)) {
+      // 图片单独成段，记录它在第几段纯文字后面
+      images.push({ afterParagraphIndex: textParagraphs.length - 1, markdown: trimmed })
+    } else if (trimmed) {
+      textParagraphs.push(para)
+    }
+  }
+
+  return { textOnly: textParagraphs.join('\n\n'), images }
+}
+
+/**
+ * 改写完成后，把图片按位置插回对应段落
+ */
+function reinsertImages(rewrittenText: string, images: ImagePosition[]): string {
+  if (images.length === 0) return rewrittenText
+
+  const paragraphs = rewrittenText.split(/\n\n+/)
+
+  // 从后往前插入，避免位置偏移
+  const sorted = [...images].sort((a, b) => b.afterParagraphIndex - a.afterParagraphIndex)
+  for (const img of sorted) {
+    const pos = Math.min(Math.max(img.afterParagraphIndex, 0), paragraphs.length - 1)
+    paragraphs.splice(pos + 1, 0, img.markdown)
+  }
+
+  return paragraphs.join('\n\n')
+}
+
+/**
+ * 过滤版权声明行（常见的样板文）
+ * 这类内容不需要改写，也不应计入相似度
+ */
+function filterBoilerplate(text: string): string {
+  const boilerplateRe = /^.*(声明|本文内容.*原创|转载请注明|未经授权.*禁止|版权归.*所有|文章首发|抄袭.*自负).*$/mg
+  return text
+    .split('\n')
+    .filter(line => !boilerplateRe.test(line.trim()))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+/**
+ * 评估内容质量，返回纯文字占比和图片数量
+ */
+function analyzeContent(text: string): { pureTextRatio: number; imageCount: number; textLength: number } {
+  const imageCount = (text.match(/!\[/g) || []).length
+  const withoutImages = text.replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+  const textLength = withoutImages.replace(/\s+/g, '').length
+  const totalLength = text.replace(/\s+/g, '').length
+  const pureTextRatio = totalLength > 0 ? textLength / totalLength : 1
+  return { pureTextRatio, imageCount, textLength }
+}
+
 // ── 类型定义 ──────────────────────────────────────────────────────
 
 export interface SegmentState {
@@ -108,9 +181,31 @@ async function finalizeTask(taskId: string, status: RewriteTask['status'], meta?
 // ── 主管道 ────────────────────────────────────────────────────────
 
 export async function runDedupPipeline(options: PipelineOptions): Promise<PipelineResult> {
-  const { userId, original, originalUrl, intensity, keywords, onChunk, onStage } = options
+  const { userId, originalUrl, intensity, keywords, onChunk, onStage } = options
 
-  // ─── Layer 0: 加载或新建任务 ─────────────────────────
+  // ─── Layer 0: 预处理 ─────────────────────────────────
+  // 1. 过滤版权声明样板行
+  let original = filterBoilerplate(options.original)
+
+  // 2. 内容质量评估
+  const { pureTextRatio, imageCount, textLength } = analyzeContent(original)
+  logger.info(`Content: pureTextRatio=${(pureTextRatio*100).toFixed(0)}%, images=${imageCount}, textLen=${textLength}`)
+
+  if (pureTextRatio < 0.3) {
+    onStage('warning', 0.02, {
+      warning: `该文章以图片为主（文字仅占 ${(pureTextRatio*100).toFixed(0)}%），改写效果有限`,
+    })
+  }
+
+  // 3. 提取图片，只让 LLM 处理纯文字（图片 URL 不送进 LLM，避免 token 浪费和干扰）
+  const { textOnly, images: extractedImages } = extractImages(original)
+  const hasImages = extractedImages.length > 0
+  if (hasImages) {
+    logger.info(`Extracted ${extractedImages.length} images, rewriting text-only`)
+  }
+  const textForRewrite = hasImages ? textOnly : original
+
+  // ─── Layer 0b: 加载或新建任务 ────────────────────────
   let task: RewriteTask | null = null
 
   if (options.taskId) {
@@ -122,14 +217,14 @@ export async function runDedupPipeline(options: PipelineOptions): Promise<Pipeli
   }
 
   if (!task) {
-    // 新任务：分段
-    const rawSegments = splitText(original, 4000)
+    // 新任务：基于纯文字版本分段（不含图片，减少 token）
+    const rawSegments = splitText(textForRewrite, 4000)
     const taskId = randomUUID()
     task = {
       id: taskId,
       userId,
       originalUrl,
-      originalText: original,
+      originalText: textForRewrite,  // 存纯文字版本（不含图片）
       segments: rawSegments.map((s, i) => ({
         index: i,
         content: s.content,
@@ -186,7 +281,7 @@ export async function runDedupPipeline(options: PipelineOptions): Promise<Pipeli
       const result = await streamWithFallback(userId, messages, chunk => {
         segResult += chunk
         onChunk(chunk)
-      }, { temperature: 0.7, max_tokens: 6000 })
+      }, { temperature: 0.85, max_tokens: 6000 })
 
       provider = result.provider
       seg.result = segResult
@@ -207,20 +302,20 @@ export async function runDedupPipeline(options: PipelineOptions): Promise<Pipeli
   // ─── 拼接所有段的结果 ────────────────────────────────
   let rewrittenFull = task.segments.map(s => s.result).join('\n\n')
 
-  // ─── Layer 2: 连续词检测 ─────────────────────────────
+  // ─── Layer 2: 连续词检测（用纯文字版本比较，排除图片干扰）─────
   onStage('checking', 0.82)
-  const matches = detectConsecutiveMatches(original, rewrittenFull, 8)
+  const matches = detectConsecutiveMatches(textForRewrite, rewrittenFull, 8)
   logger.info(`Dedup checker: found ${matches.length} consecutive matches`)
 
-  // ─── Layer 3: 自动修补（不限制 maxFixes） ────────────
+  // ─── Layer 3: 自动修补 ────────────────────────────────
   let finalContent = rewrittenFull
   let fixCount = 0
 
   if (matches.length > 0) {
     onStage('fixing', 0.88, { fixCount: matches.length })
     const fixResult = await fixConsecutiveMatches(
-      original, rewrittenFull, matches, userId,
-      Math.min(matches.length, 15)  // 全部修补，最多15处
+      textForRewrite, rewrittenFull, matches, userId,
+      Math.min(matches.length, 15)
     )
     finalContent = fixResult.fixed
     fixCount = fixResult.fixCount
@@ -236,9 +331,15 @@ export async function runDedupPipeline(options: PipelineOptions): Promise<Pipeli
     pauseWords: false,
   })
 
-  // ─── Layer 5: 相似度计算 ─────────────────────────────
-  const finalMatches = detectConsecutiveMatches(original, finalContent, 8)
-  const similarity = estimateSimilarity(original, finalContent, finalMatches)
+  // ─── Layer 5: 相似度计算（基于纯文字比较）────────────
+  const finalMatches = detectConsecutiveMatches(textForRewrite, finalContent, 8)
+  const similarity = estimateSimilarity(textForRewrite, finalContent, finalMatches)
+
+  // ─── Layer 6: 图片插回（改写完成后把图片放回对应段落）────────
+  if (hasImages) {
+    finalContent = reinsertImages(finalContent, extractedImages)
+    logger.info(`Reinserted ${extractedImages.length} images back into content`)
+  }
 
   const meta = { provider, similarity, fixCount }
   await finalizeTask(task.id, 'done', meta)

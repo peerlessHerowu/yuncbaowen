@@ -13,9 +13,13 @@ export interface ConsecutiveMatch {
   length: number
 }
 
+// 图片 markdown 正则（排除相似度计算中的图片内容）
+const IMG_MARKDOWN_RE = /!\[[^\]]*\]\([^)]*\)/g
+
 /**
  * 检测改写文本中与原文连续 N 字以上相同的片段
  * 算法：n-gram 索引法，O(n+m) 时间复杂度
+ * 注意：计算前会排除图片 markdown（![]()），避免图片标题/URL 污染相似度结果
  */
 export function detectConsecutiveMatches(
   original: string,
@@ -24,9 +28,9 @@ export function detectConsecutiveMatches(
 ): ConsecutiveMatch[] {
   if (!original || !rewritten || threshold < 3) return []
 
-  // 去除空白字符做纯文本比较
-  const cleanOriginal = original.replace(/\s+/g, '')
-  const cleanRewritten = rewritten.replace(/\s+/g, '')
+  // 排除图片 markdown 再做比较（图片 URL/alt 相同是正常的，不算抄袭）
+  const cleanOriginal = original.replace(IMG_MARKDOWN_RE, '').replace(/\s+/g, '')
+  const cleanRewritten = rewritten.replace(IMG_MARKDOWN_RE, '').replace(/\s+/g, '')
 
   if (cleanOriginal.length < threshold || cleanRewritten.length < threshold) return []
 
@@ -117,7 +121,8 @@ export function estimateSimilarity(
 ): number {
   if (matches.length === 0) return 0
 
-  const cleanOriginalLen = original.replace(/\s+/g, '').length
+  // 排除图片 markdown 后计算分母（和 detectConsecutiveMatches 保持一致）
+  const cleanOriginalLen = original.replace(IMG_MARKDOWN_RE, '').replace(/\s+/g, '').length
   if (cleanOriginalLen === 0) return 0
 
   // 基础覆盖率
