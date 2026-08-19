@@ -343,6 +343,8 @@ export async function fetchArticle(url: string): Promise<FetchedArticle> {
   }
 
   return article
+
+  return article
 }
 
 /**

@@ -26,7 +26,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   }
   const token = header.slice(7)
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET || 'secret') as { sub: number }
+    const payload = jwt.verify(token, process.env.JWT_SECRET!) as { sub: number }
     queryOne<AuthUser>(
       'SELECT id, username, email, is_activated, plan FROM users WHERE id = ?',
       [payload.sub]

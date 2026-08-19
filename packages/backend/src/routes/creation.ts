@@ -34,11 +34,14 @@ creationRouter.get('/stats/overview', async (req: Request, res: Response, next: 
 creationRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const page      = Math.max(1, parseInt(req.query.page as string) || 1)
-    const page_size = Math.min(50, parseInt(req.query.page_size as string) || 20)
+    const page_size = Math.min(50, Math.max(1, parseInt(req.query.page_size as string) || 20))
     const type      = req.query.type as string
     const keyword   = req.query.keyword as string
-    // 必须转为 number，mysql2 prepared statement 对 LIMIT/OFFSET 需要 number 类型
     const offset    = (page - 1) * page_size
+    // 二次防御：确保内联到 SQL 的值绝对是安全整数
+    if (!Number.isInteger(page_size) || !Number.isInteger(offset) || offset < 0) {
+      return void res.status(400).json({ success: false, error: '分页参数非法' })
+    }
 
     let where = 'WHERE user_id=?'
     const params: unknown[] = [req.user!.id]
@@ -53,7 +56,7 @@ creationRouter.get('/', async (req: Request, res: Response, next: NextFunction) 
 
     const [countRows, items] = await Promise.all([
       query<{ total: number }>(countSql, params),
-      query(listSql, params),   // LIMIT/OFFSET 直接内联，避免 prepared statement 类型问题
+      query(listSql, params),
     ])
 
     res.json({

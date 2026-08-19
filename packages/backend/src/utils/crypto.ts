@@ -1,7 +1,8 @@
 import crypto from 'crypto'
 
 const ALGORITHM = 'aes-256-gcm'
-const SECRET = (process.env.AES_SECRET_KEY || 'yuncbaowen-secret-key-32chars!!').padEnd(32).slice(0, 32)
+// AES_SECRET_KEY 必须在 index.ts 启动校验中已确认存在且 >= 32 位
+const SECRET = process.env.AES_SECRET_KEY!.slice(0, 32)
 
 export function encryptApiKey(plaintext: string): string {
   const iv = crypto.randomBytes(16)

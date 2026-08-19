@@ -64,7 +64,7 @@ export const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
   kiro: {
     id: 'kiro', name: 'Kiro Gateway',
     baseURL: 'http://localhost:8000',
-    defaultModel: 'claude-sonnet-4-5',
+    defaultModel: 'claude-sonnet-4.6',
     apiKeyHeader: 'Authorization',
     chatPath: '/v1/chat/completions',
   },
