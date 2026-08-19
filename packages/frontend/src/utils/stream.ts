@@ -86,8 +86,9 @@ export async function readStream(
           return finalEvent
         }
       } catch (parseErr) {
-        if (parseErr instanceof Error && !parseErr.message.startsWith('JSON')) throw parseErr
-        // JSON 解析失败（被截断的包已通过 lineBuffer 解决了，走到这里说明服务端发了非法 JSON）
+        // SyntaxError = JSON.parse 失败（服务端发了非法 JSON，直接忽略）
+        // 我们主动 throw 的 Error（如 json.error 引发的）需要向上传播
+        if (!(parseErr instanceof SyntaxError)) throw parseErr
       }
     }
   }
