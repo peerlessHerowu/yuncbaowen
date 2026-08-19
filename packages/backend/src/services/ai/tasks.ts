@@ -224,6 +224,8 @@ export async function rewriteArticle(
   let originalUrl: string | undefined
   if (/^https?:\/\//i.test(original)) {
     originalUrl = original
+    // 通知前端正在抓取链接（包含图片下载，可能需要几秒）
+    onStage?.('fetching', 0.02, { info: '正在抓取文章内容和图片...' })
     const { success, failed } = await fetchArticles([original])
     if (success.length > 0) original = success[0].content.slice(0, 12000)
     else throw new Error(`链接抓取失败：${failed[0]?.error}，请粘贴正文`)

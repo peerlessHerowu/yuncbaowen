@@ -9,7 +9,7 @@ import { cn } from '../../utils/cn'
 
 type Intensity = 'light' | 'medium' | 'heavy'
 type Intent = 'dedup' | 'platform' | 'casual' | 'fun'
-type Stage = 'idle' | 'rewriting' | 'checking' | 'fixing' | 'randomizing' | 'done'
+type Stage = 'idle' | 'fetching' | 'rewriting' | 'checking' | 'fixing' | 'randomizing' | 'done'
 
 const INTENSITY_OPTIONS: Array<{ id: Intensity; label: string; pct: string; desc: string }> = [
   { id: 'light',  label: '轻度', pct: '保留80%', desc: '换词换句，保持原结构' },
@@ -26,12 +26,26 @@ const INTENT_OPTIONS: Array<{ id: Intent; label: string; icon: string; desc: str
 
 const STAGE_LABELS: Record<Stage, string> = {
   idle:        '',
+  fetching:    '抓取文章',
   rewriting:   'AI 改写中',
   checking:    '检测连续词',
   fixing:      '优化修补中',
   randomizing: '润色处理中',
   done:        '完成',
 }
+
+const STAGE_DESC: Record<Stage, string> = {
+  idle:        '',
+  fetching:    '正在下载文章和图片（首次图片较慢）',
+  rewriting:   '五维度深度改写，逻辑重排，连续词打断',
+  checking:    '扫描与原文相同的连续词片段',
+  fixing:      '对命中片段做局部二次改写',
+  randomizing: '同义词替换 + 节奏随机化',
+  done:        '改写完成',
+}
+
+// 进度步骤顺序（用于「第N步/共M步」显示）
+const ACTIVE_STAGES: Stage[] = ['fetching', 'rewriting', 'checking', 'fixing', 'randomizing']
 
 export default function RewritePage() {
   const token     = useAuthStore(s => s.token)
@@ -76,7 +90,10 @@ export default function RewritePage() {
 
     // 续传时保留已有输出，重跑从头清空
     if (!resumeTaskId) setOutput('')
-    setStreaming(true); setStage('rewriting'); setProgress(0.05)
+    const isUrl = /^https?:\/\//i.test(original.trim())
+    setStreaming(true)
+    setStage(isUrl ? 'fetching' : 'rewriting')
+    setProgress(isUrl ? 0.01 : 0.05)
     if (!resumeTaskId) { setSimilarity(null); setFixCount(0) }
 
     abortRef.current = new AbortController()
@@ -113,10 +130,12 @@ export default function RewritePage() {
       if ((err as Error).name !== 'AbortError') {
         const msg = err instanceof Error ? err.message : '仿写失败'
         const isTimeout = msg.includes('超时') || msg.includes('timeout')
-        toast.error(
-          isTimeout ? `${msg}（点「断点续传」继续）` : msg,
-          { duration: 5000 }
-        )
+        const isGateway = msg.includes('502') || msg.includes('Gateway') || msg.includes('Connection failed')
+        const isNetErr  = msg.includes('fetch failed') || msg.includes('网络')
+        const tip = isTimeout  ? '（点「断点续传」继续，已完成部分已保存）' :
+                    isGateway  ? '（AI 服务暂时不稳定，稍等片刻再试）' :
+                    isNetErr   ? '（网络异常，请检查网络后重试）' : ''
+        toast.error(`${msg}${tip}`, { duration: 6000 })
       }
       setStage('idle')
     } finally { setStreaming(false) }
@@ -387,14 +406,21 @@ export default function RewritePage() {
         <div className="card overflow-hidden flex flex-col">
           {/* 标题栏 + 进度指示 */}
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-dark-500 shrink-0">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-slate-300">仿写结果</span>
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-sm font-medium text-slate-300 shrink-0">仿写结果</span>
               {streaming && stage !== 'done' && (
-                <span className="flex items-center gap-1.5 text-[10px] text-teal-400 bg-teal-500/10 px-2.5 py-0.5 rounded-full">
-                  {stage === 'rewriting' && <Loader2 size={9} className="animate-spin" />}
-                  {stage === 'checking' && <Shield size={9} />}
-                  {stage === 'fixing' && <Sparkles size={9} />}
-                  {STAGE_LABELS[stage]}
+                <span className="flex items-center gap-1.5 text-[10px] text-teal-400 bg-teal-500/10 px-2.5 py-0.5 rounded-full shrink-0">
+                  {stage === 'fetching'    && <Loader2 size={9} className="animate-spin" />}
+                  {stage === 'rewriting'   && <Loader2 size={9} className="animate-spin" />}
+                  {stage === 'checking'    && <Shield size={9} />}
+                  {stage === 'fixing'      && <Sparkles size={9} />}
+                  {stage === 'randomizing' && <Sparkles size={9} />}
+                  {(() => {
+                    const idx = ACTIVE_STAGES.indexOf(stage as Stage)
+                    const label = STAGE_LABELS[stage]
+                    const stepInfo = idx >= 0 ? ` ${idx + 1}/${ACTIVE_STAGES.length}` : ''
+                    return `${label}${stepInfo}`
+                  })()}
                   {stage === 'fixing' && fixCount > 0 && ` (${fixCount}处)`}
                 </span>
               )}
@@ -414,13 +440,47 @@ export default function RewritePage() {
             </div>
           </div>
 
-          {/* 进度条（仅改写中显示） */}
+          {/* 进度条 + 阶段说明 */}
           {streaming && stage !== 'done' && (
-            <div className="h-[3px] bg-dark-500">
-              <div
-                className="h-full rounded-full transition-all duration-700 ease-out bg-gradient-to-r from-brand-600 to-teal-400"
-                style={{ width: `${Math.min(progress * 100, 98)}%` }}
-              />
+            <div className="px-4 pt-2.5 pb-2 bg-dark-300/50 border-b border-dark-500 space-y-1.5">
+              {/* 步骤点阵 */}
+              <div className="flex items-center gap-1.5">
+                {ACTIVE_STAGES.map((s) => {
+                  const idx = ACTIVE_STAGES.indexOf(s)
+                  const curIdx = ACTIVE_STAGES.indexOf(stage as Stage)
+                  const isDone = idx < curIdx
+                  const isCur = idx === curIdx
+                  return (
+                    <div key={s} className="flex items-center gap-1.5">
+                      <div className={cn(
+                        'w-1.5 h-1.5 rounded-full transition-all duration-300',
+                        isDone ? 'bg-teal-400' : isCur ? 'bg-teal-400 animate-pulse' : 'bg-dark-500'
+                      )} />
+                      {idx < ACTIVE_STAGES.length - 1 && (
+                        <div className={cn('h-px flex-1 w-4 transition-all duration-300', isDone ? 'bg-teal-400/50' : 'bg-dark-500')} />
+                      )}
+                    </div>
+                  )
+                })}
+                <span className="text-[10px] text-slate-500 ml-1">
+                  {(() => {
+                    const idx = ACTIVE_STAGES.indexOf(stage as Stage)
+                    return idx >= 0 ? `${idx + 1}/${ACTIVE_STAGES.length}` : ''
+                  })()}
+                </span>
+              </div>
+              {/* 当前阶段说明 */}
+              <p className="text-[10px] text-slate-400 leading-relaxed">
+                <span className="text-teal-400 font-medium">{STAGE_LABELS[stage]}</span>
+                {STAGE_DESC[stage] ? ` — ${STAGE_DESC[stage]}` : ''}
+              </p>
+              {/* 进度条 */}
+              <div className="h-[2px] bg-dark-500 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-700 ease-out bg-gradient-to-r from-brand-600 to-teal-400"
+                  style={{ width: `${Math.min(progress * 100, 98)}%` }}
+                />
+              </div>
             </div>
           )}
 
